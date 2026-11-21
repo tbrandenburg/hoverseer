@@ -9,6 +9,10 @@ configMapGenerator:
       - deploy/seed-workflows.sh
       - refund-review.yaml=workflows/refund-review/workflow.yaml
       - article-review.yaml=workflows/article-review/workflow.yaml
+  - name: managed-workflows
+    files:
+      - deploy/managed-workflows.yaml
   - name: gateway-source
     files:
       - gateway/server.mjs
+      - gateway/openapi.json

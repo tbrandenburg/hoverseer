@@ -28,12 +28,12 @@ kind create cluster --name hoverseer
 kubectl config use-context kind-hoverseer
 ./hoverseer init
 ./hoverseer kubernetes build
-kind load docker-image hoverseer-studio:local hoverseer-hitly:local --name hoverseer
+kind load docker-image hoverseer-studio:local hoverseer-hitly:local hoverseer-api:local --name hoverseer
 ./hoverseer kubernetes up
 ./hoverseer kubernetes forward
 ```
 
-Keep port forwarding running in a separate terminal. Check startup with `kubectl -n hoverseer get pods,pvc`. On another Kubernetes cluster, publish the two images to a registry the cluster can pull from, set the corresponding image names in a Kustomize overlay or in `k8s/stack.yaml`, and run `./hoverseer kubernetes up` using that context. Use only one deployment on the same set of local ports at a time.
+Keep port forwarding running in a separate terminal. Check startup with `kubectl -n hoverseer get pods,pvc`. On another Kubernetes cluster, publish the three images to a registry the cluster can pull from, set the corresponding image names in a Kustomize overlay or in `k8s/stack.yaml`, and run `./hoverseer kubernetes up` using that context. Use only one deployment on the same set of local ports at a time.
 
 ### Open the apps
 
@@ -42,6 +42,7 @@ Keep port forwarding running in a separate terminal. Check startup with `kubectl
 | Zigflow Studio | [localhost:3000](http://localhost:3000) | Create or edit workflow projects |
 | HITLy | [localhost:3001](http://localhost:3001) | Review requests and record decisions |
 | Temporal Web | [localhost:8233](http://localhost:8233) | Inspect workflow status, event history and results |
+| Workflow API | [localhost:8081/openapi.json](http://localhost:8081/openapi.json) | Discover and call managed workflow routes |
 
 ## Connect the inbox
 
@@ -78,6 +79,42 @@ For Kubernetes, use `./hoverseer kubernetes start` with the same arguments.
 - Approve the second request in HITLy. The same Temporal execution returns `approved`. Reject the third request to get `rejected`.
 - For a timeout, start another large refund and let the five-minute wait elapse. If the HITLy item remains visible, it expires independently or can be cancelled from HITLy.
 - To verify recovery, start a large refund, leave it pending, and run `./hoverseer docker reload` or `./hoverseer kubernetes reload` before approving. Restart port forwarding after the Kubernetes reload if it ends.
+
+## Manage workflows for HTTP callers
+
+The [managed workflow catalog](deploy/managed-workflows.yaml) maps each public name to a Studio project directory. Both bundled projects are listed. Add another entry after creating or importing its project. Zigflow still loads the saved YAML from the shared volume. The API reads the target workflow type, task queue and input schema from that same file. Projects outside the catalog remain available through Studio and the CLI.
+
+Run `./hoverseer docker reload` after changing a catalog entry or a saved workflow. On Kubernetes, use `./hoverseer kubernetes up` after changing the catalog and `./hoverseer kubernetes reload` after changing a saved workflow. If upgrading from an older checkout, run `./hoverseer init` and bring up the stack to add the API and its token while retaining your existing credentials.
+
+### Discover and call a workflow
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /openapi.json` | OpenAPI 3.1 document with one start operation and its Zigflow input schema per managed workflow |
+| `GET /v1/workflows` | Managed workflow names and start URLs |
+| `POST /v1/workflows/{name}/runs` | Start a named workflow with a JSON body and return `202 Accepted` and a URL to check its status |
+| `GET /v1/runs/{workflowId}` | Read the execution status and the result when it completes |
+
+Discovery is public. Start and status requests require the bearer token in `.env`. The API accepts valid JSON and Zigflow enforces the workflow's input schema during execution.
+
+```bash
+token=$(sed -n 's/^HOVERSEER_API_TOKEN=//p' .env)
+curl -i http://localhost:8081/v1/workflows/article-review/runs \
+  -H "Authorization: Bearer $token" \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: release-notes-2026-11-21' \
+  --data '{"headline":"Release notes","draft":"What changed this week."}'
+```
+
+Call the returned `Location` URL with the same bearer token. A run waiting for a HITLy decision remains `RUNNING`. Retrying the same workflow with the same idempotency key and input returns the existing execution for as long as Temporal retains it. Reusing the key with different input returns `409 Conflict`.
+
+For remote callers, route HTTPS through a reverse proxy to the Compose API port or through an Ingress to the Kubernetes Service `api:8081`. The API binds to loopback through Compose and uses a ClusterIP Service in Kubernetes. Keep the approval gateway internal. Its own OpenAPI document is available at `http://approval-gateway:8080/openapi.json` from within the stack.
+
+### Components
+
+- Zigflow already loads, validates, and executes multiple YAML definitions. [Zigflow CLI](https://zigflow.dev/docs/cli/using-the-cli/)
+- Temporal already owns starting, describing, and deduplicating executions. Hoverseer uses the official TypeScript SDK. Temporal also defines a lower-level HTTP mapping, which exposes Temporal's own workflow service contract. [Temporal API](https://docs.temporal.io/self-hosted-guide/server-frontend-api-reference) · [HTTP protocol mappings](https://github.com/temporalio/api/blob/main/temporal/api/workflowservice/v1/service.proto)
+- Fastify and its Swagger plugin generate the OpenAPI document from the registered routes. Hono's Zod OpenAPI integration is another option. Using Fastify here lets us publish the JSON Schema already stored in Zigflow YAML. [Fastify Swagger](https://github.com/fastify/fastify-swagger) · [Hono Zod OpenAPI](https://hono.dev/examples/zod-openapi)
 
 ## Add or edit a workflow
 

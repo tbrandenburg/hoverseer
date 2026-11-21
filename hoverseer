@@ -17,16 +17,24 @@ USAGE
 
 if [[ ${1:-} == init ]]; then
   if [[ -e .env ]]; then
-    printf '%s\n' '.env already exists.'
+    if ! grep -q '^HOVERSEER_API_TOKEN=' .env; then
+      api_token=$(openssl rand -hex 32)
+      printf '\nHOVERSEER_API_TOKEN=%s\n' "$api_token" >> .env
+      printf '%s\n' 'Added the workflow API token to .env.'
+    else
+      printf '%s\n' '.env already exists.'
+    fi
     exit 0
   fi
   umask 077
   auth_secret=$(openssl rand -hex 32)
   db_password=$(openssl rand -hex 24)
+  api_token=$(openssl rand -hex 32)
   {
     printf 'BETTER_AUTH_SECRET=%s\n' "$auth_secret"
     printf 'POSTGRES_PASSWORD=%s\n' "$db_password"
     printf 'HITLY_PROJECT_ID=\nHITLY_API_KEY=\n'
+    printf 'HOVERSEER_API_TOKEN=%s\n' "$api_token"
   } > .env
   printf '%s\n' 'Created .env. Fill in the HITLy project ID and API key after creating a project.'
   exit 0
@@ -132,7 +140,7 @@ case "$backend:$action" in
     ;;
   docker:reload)
     require_env
-    docker compose restart zigflow
+    docker compose restart zigflow api
     ;;
   docker:stop)
     require_env
@@ -141,6 +149,7 @@ case "$backend:$action" in
   kubernetes:build)
     docker build -f images/studio.Dockerfile -t hoverseer-studio:local .
     docker build -f images/hitly.Dockerfile -t hoverseer-hitly:local .
+    docker build -f images/api.Dockerfile -t hoverseer-api:local .
     ;;
   kubernetes:up)
     require_env
@@ -166,6 +175,7 @@ case "$backend:$action" in
     kube port-forward service/studio 3000:3000 & pids+=("$!")
     kube port-forward service/hitly 3001:3001 & pids+=("$!")
     kube port-forward service/temporal 8233:8233 & pids+=("$!")
+    kube port-forward service/api 8081:8081 & pids+=("$!")
     wait -n "${pids[@]}"
     ;;
   docker:start|kubernetes:start)

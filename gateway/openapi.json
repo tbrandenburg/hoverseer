@@ -1,0 +1,80 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Hoverseer internal approval gateway", "version": "1.0.0" },
+  "paths": {
+    "/openapi.json": {
+      "get": {
+        "operationId": "getApprovalGatewayOpenApi",
+        "responses": { "200": { "description": "This OpenAPI document", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "getApprovalGatewayHealth",
+        "responses": {
+          "200": {
+            "description": "Whether HITLy credentials are configured",
+            "content": { "application/json": { "schema": {
+              "type": "object", "required": ["configured"], "properties": { "configured": { "type": "boolean" } }
+            } } }
+          }
+        }
+      }
+    },
+    "/approvals": {
+      "post": {
+        "operationId": "createApproval",
+        "summary": "Create a HITLy review for a running Zigflow workflow",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["workflowId", "runId", "stepId"],
+            "properties": {
+              "workflowId": { "$ref": "#/components/schemas/Identifier" },
+              "runId": { "$ref": "#/components/schemas/Identifier" },
+              "stepId": { "$ref": "#/components/schemas/Identifier" },
+              "title": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "\\S" },
+              "context": { "type": "string", "description": "Markdown for the reviewer" },
+              "payload": { "type": "object", "additionalProperties": true },
+              "orderId": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "amountCents": { "type": "integer", "minimum": 1, "maximum": 100000000 }
+            },
+            "anyOf": [
+              { "required": ["title"] },
+              {
+                "description": "Compatibility with existing refund workflows",
+                "required": ["orderId", "amountCents"],
+                "not": { "anyOf": [{ "required": ["title"] }, { "required": ["context"] }, { "required": ["payload"] }] }
+              }
+            ]
+          } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Approval created",
+            "content": { "application/json": { "schema": {
+              "type": "object", "required": ["approvalId"], "properties": { "approvalId": { "type": "string" } }
+            } } }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "502": { "$ref": "#/components/responses/Error" },
+          "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Identifier": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,120}$" }
+    },
+    "responses": {
+      "Error": {
+        "description": "Approval could not be created",
+        "content": { "application/json": { "schema": {
+          "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } }
+        } } }
+      }
+    }
+  }
+}

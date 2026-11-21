@@ -112,6 +112,21 @@ spec:
             httpGet: {path: /readyz, port: 3002}
           volumeMounts:
             - {name: workflow-data, mountPath: /workflows, readOnly: true}
+        - name: api
+          image: hoverseer-api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: api, containerPort: 8081}
+          env:
+            - {name: TEMPORAL_ADDRESS, value: "temporal:7233"}
+            - name: HOVERSEER_API_TOKEN
+              valueFrom:
+                secretKeyRef: {name: hoverseer-config, key: HOVERSEER_API_TOKEN, optional: true}
+          readinessProbe:
+            httpGet: {path: /openapi.json, port: api}
+          volumeMounts:
+            - {name: workflow-data, mountPath: /workflows, readOnly: true}
+            - {name: managed-workflows, mountPath: /config, readOnly: true}
       volumes:
         - name: workflow-data
           persistentVolumeClaim: {claimName: workflow-data}
@@ -122,6 +137,8 @@ spec:
               - {key: seed-workflows.sh, path: seed-workflows.sh}
               - {key: refund-review.yaml, path: refund-review/workflow.yaml}
               - {key: article-review.yaml, path: article-review/workflow.yaml}
+        - name: managed-workflows
+          configMap: {name: managed-workflows}
 ---
 apiVersion: v1
 kind: Service
@@ -131,6 +148,15 @@ spec:
   selector: {app: workflow}
   ports:
     - {port: 3000, targetPort: studio}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector: {app: workflow}
+  ports:
+    - {name: http, port: 8081, targetPort: api}
 ---
 apiVersion: apps/v1
 kind: Deployment

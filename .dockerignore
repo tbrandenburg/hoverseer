@@ -3,3 +3,8 @@
 !images/*.Dockerfile
 !gateway/
 !gateway/server.mjs
+!gateway/openapi.json
+!api/
+!api/*.mjs
+!api/package.json
+!api/package-lock.json

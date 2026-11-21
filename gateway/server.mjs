@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 
+const openApi = JSON.parse(readFileSync(new URL('./openapi.json', import.meta.url), 'utf8'));
 const hitlyUrl = new URL('/api/v1/approvals', process.env.HITLY_URL ?? 'http://hitly:3001');
 const projectId = process.env.HITLY_PROJECT_ID;
 const apiKey = process.env.HITLY_API_KEY;
@@ -46,6 +48,9 @@ function approvalDetails(input) {
 }
 
 createServer(async (req, res) => {
+  if (req.method === 'GET' && req.url === '/openapi.json') {
+    return respond(res, 200, openApi);
+  }
   if (req.method === 'GET' && req.url === '/health') {
     return respond(res, 200, { configured: Boolean(projectId && apiKey) });
   }
