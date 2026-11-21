@@ -1,0 +1,76 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check JavaScript, TypeScript and shell syntax
+        shell: bash
+        run: |
+          git ls-files -z -- '*.mjs' | xargs -0 -r -n1 node --check
+          for source in deploy/studio/*.ts; do
+            node --disable-warning=ExperimentalWarning --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              import { stripTypeScriptTypes } from "node:module";
+              process.stdout.write(stripTypeScriptTypes(readFileSync(process.argv[1], "utf8")));
+            ' "$source" | node --input-type=module --check
+          done
+          bash -n hoverseer
+          sh -n deploy/seed-workflows.sh
+      - name: Check Dockerfiles
+        run: |
+          for dockerfile in deploy/images/*.Dockerfile; do
+            docker buildx build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file "$dockerfile" .
+          done
+      - name: Validate Compose and Kustomize
+        env:
+          POSTGRES_PASSWORD: checks-only
+          BETTER_AUTH_SECRET: checks-only
+        run: |
+          docker compose config --quiet
+          kubectl kustomize . > /dev/null
+
+  format:
+    name: Format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check whitespace and conflict markers
+        run: git diff --check "$(git hash-object -t tree /dev/null)" HEAD
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            cruncher/package-lock.json
+      - name: Test API
+        run: |
+          npm ci --prefix api --no-audit --no-fund
+          npm test --prefix api
+      - name: Test Cruncher and shared nodes
+        run: |
+          npm ci --prefix cruncher --no-audit --no-fund
+          npm test --prefix cruncher
