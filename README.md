@@ -296,7 +296,11 @@ Cruncher runs `runShell` on the shared `hoverseer-activities` queue. Use a YAML 
             MESSAGE: '${ $input.message }'
 ```
 
-Pass workflow data through environment variables and quote it in the script. Cruncher has Git and a fresh temporary working directory per activity. You can clone a repository and work with it in the same step. The directory is removed afterward. Choose `sh` or `bash`. Commands run with `-eu`, return stdout, and fail on a nonzero exit, a timeout, or output above 64 KiB.
+Pass workflow data through environment variables and quote it in the script. All shell steps in a workflow run start in the same working directory. One step can run `git clone … repo`, and a later step can run `cd repo` and continue from that checkout. A new workflow run gets its own directory.
+
+Docker Compose uses the `cruncher-workspaces` named volume. Kubernetes mounts the `cruncher-workspaces` claim. The files survive a Cruncher restart while that storage is available. Hoverseer retains these files after the run, so delete unneeded workspaces through your storage administration.
+
+Choose `sh` or `bash`. Commands run with `-eu`, return stdout, and fail on a nonzero exit, a timeout, or output above 64 KiB.
 
 The child process starts with a limited environment, but shell scripts share the Cruncher user, filesystem, and network with the approval activity. They can potentially access credentials held by that worker. Run scripts from trusted workflow authors. The native Zigflow `run.shell` task still executes inside the Zigflow worker.
 

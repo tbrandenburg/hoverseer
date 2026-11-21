@@ -1,7 +1,9 @@
 FROM node:24-bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && install -d -o node -g node /var/lib/hoverseer/workspaces
+ENV HOVERSEER_WORKSPACES_DIR=/var/lib/hoverseer/workspaces
 WORKDIR /app/cruncher
 COPY cruncher/package.json cruncher/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund

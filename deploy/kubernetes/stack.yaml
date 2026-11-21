@@ -28,6 +28,16 @@ spec:
     requests:
       storage: 100Mi
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cruncher-workspaces
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -254,12 +264,15 @@ kind: Deployment
 metadata:
   name: cruncher
 spec:
+  strategy:
+    type: Recreate
   selector:
     matchLabels: {app: cruncher}
   template:
     metadata:
       labels: {app: cruncher}
     spec:
+      securityContext: {fsGroup: 1000}
       containers:
         - name: cruncher
           image: hoverseer-cruncher:local
@@ -290,6 +303,11 @@ spec:
             - name: HITLY_API_KEY
               valueFrom:
                 secretKeyRef: {name: hoverseer-config, key: HITLY_API_KEY}
+          volumeMounts:
+            - {name: workspaces, mountPath: /var/lib/hoverseer/workspaces}
+      volumes:
+        - name: workspaces
+          persistentVolumeClaim: {claimName: cruncher-workspaces}
 ---
 apiVersion: apps/v1
 kind: Deployment
