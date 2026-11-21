@@ -30,21 +30,14 @@ do:
               needsReview: '${ $input.amountCents > 10000 }'
         - requestReview:
             if: '${ $context.needsReview }'
-            call: http
+            call: activity
             with:
-              method: POST
-              endpoint: http://approval-gateway:8080/approvals
-              headers:
-                Content-Type: application/json
-              body:
-                workflowId: '${ $data.workflow.workflow_execution_id }'
-                runId: '${ $data.workflow.workflow_execution_run_id }'
-                stepId: refund-review
-                title: Review simulated refund
-                context: Review the requested USD refund. This request simulates a refund.
-                payload:
-                  orderId: '${ $input.orderId }'
-                  amountCents: '${ $input.amountCents }'
+              name: requestApproval
+              taskQueue: hoverseer-activities
+              arguments:
+                - title: Review simulated refund
+                  context: Review the requested USD refund. This request simulates a refund.
+                  payload: '${ {orderId: $input.orderId, amountCents: $input.amountCents} }'
         - awaitDecision:
             if: '${ $context.needsReview }'
             metadata:

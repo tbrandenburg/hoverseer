@@ -61,7 +61,7 @@ services:
       interval: 3s
       timeout: 3s
       retries: 30
-  hitly:
+  hotl:
     image: hoverseer-hitly:local
     build:
       context: .
@@ -77,6 +77,19 @@ services:
       HITLY_MAIL_TRANSPORT: log
     ports:
       - "127.0.0.1:3001:3001"
+  cruncher:
+    image: hoverseer-cruncher:local
+    build:
+      context: .
+      dockerfile: images/cruncher.Dockerfile
+    depends_on:
+      temporal:
+        condition: service_healthy
+    restart: on-failure
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      HITLY_PROJECT_ID: ${HITLY_PROJECT_ID:-}
+      HITLY_API_KEY: ${HITLY_API_KEY:-}
   approval-gateway:
     image: hoverseer-gateway:local
     build:

@@ -8,3 +8,9 @@
 !api/*.mjs
 !api/package.json
 !api/package-lock.json
+!gateway/hitly.mjs
+!cruncher/
+!cruncher/main.mjs
+!cruncher/activities.mjs
+!cruncher/package.json
+!cruncher/package-lock.json

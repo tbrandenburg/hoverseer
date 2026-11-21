@@ -1,11 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { approvalDetails, createHitlyClient, HitlyRequestError } from './hitly.mjs';
 
 const openApi = JSON.parse(readFileSync(new URL('./openapi.json', import.meta.url), 'utf8'));
-const hitlyUrl = new URL('/api/v1/approvals', process.env.HITLY_URL ?? 'http://hitly:3001');
-const projectId = process.env.HITLY_PROJECT_ID;
-const apiKey = process.env.HITLY_API_KEY;
-const temporalAddress = process.env.TEMPORAL_ADDRESS ?? 'temporal:7233';
+const hitly = createHitlyClient();
 const temporalNamespace = process.env.TEMPORAL_NAMESPACE ?? 'default';
 
 function respond(res, status, body) {
@@ -26,7 +24,7 @@ async function readJson(req) {
   }
 }
 
-function approvalDetails(input) {
+function gatewayApprovalDetails(input) {
   const { title, context, payload, orderId, amountCents } = input;
   if (title === undefined && context === undefined && payload === undefined
       && typeof orderId === 'string' && orderId.length > 0 && orderId.length <= 80
@@ -39,12 +37,7 @@ function approvalDetails(input) {
     };
   }
 
-  if (typeof title !== 'string' || !title.trim() || title.length > 160
-      || (context !== undefined && typeof context !== 'string')
-      || (payload !== undefined && (payload === null || typeof payload !== 'object' || Array.isArray(payload)))) {
-    return null;
-  }
-  return { actionName: title.trim(), contextMarkdown: context, args: payload ?? {} };
+  return approvalDetails(input);
 }
 
 createServer(async (req, res) => {
@@ -52,52 +45,35 @@ createServer(async (req, res) => {
     return respond(res, 200, openApi);
   }
   if (req.method === 'GET' && req.url === '/health') {
-    return respond(res, 200, { configured: Boolean(projectId && apiKey) });
+    return respond(res, 200, { configured: hitly.configured });
   }
   if (req.method !== 'POST' || req.url !== '/approvals') {
     return respond(res, 404, { error: 'Route not found' });
   }
-  if (!projectId || !apiKey) {
+  if (!hitly.configured) {
     return respond(res, 503, { error: 'Configure the HITLy project and API key' });
   }
 
   const input = await readJson(req).catch(() => null);
   const { workflowId, runId, stepId } = input ?? {};
-  const details = input && approvalDetails(input);
+  const details = input && gatewayApprovalDetails(input);
   if (!details || ![workflowId, runId, stepId].every(value =>
       typeof value === 'string' && /^[\w.-]{1,120}$/.test(value))) {
     return respond(res, 400, { error: 'Invalid approval request' });
   }
 
   try {
-    const approval = await fetch(hitlyUrl, {
-      method: 'POST',
-      redirect: 'error',
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        'content-type': 'application/json',
-        'idempotency-key': `${workflowId}:${runId}:${stepId}`,
-      },
-      body: JSON.stringify({
-        plugin: 'temporal',
-        projectId,
-        workflowId,
-        address: temporalAddress,
-        namespace: temporalNamespace,
-        ...details,
-      }),
-    });
-    if (!approval.ok) {
-      console.error('HITLy ingest returned HTTP %d', approval.status);
-      return respond(res, 502, { error: `HITLy returned HTTP ${approval.status}` });
-    }
-    const result = await approval.json();
-    if (typeof result?.id !== 'string' || !result.id) {
-      return respond(res, 502, { error: 'HITLy response did not contain an approval ID' });
-    }
-    return respond(res, 201, { approvalId: result.id });
+    const result = await hitly.request({
+      workflowId,
+      namespace: temporalNamespace,
+      idempotencyKey: `${workflowId}:${runId}:${stepId}`,
+    }, details);
+    return respond(res, 201, result);
   } catch (error) {
+    if (error instanceof HitlyRequestError) {
+      console.error('HITLy ingest returned HTTP %d', error.status);
+      return respond(res, 502, { error: error.message });
+    }
     console.error('HITLy ingest failed: %s', error.name);
     return respond(res, 502, { error: 'HITLy request failed' });
   }

@@ -24,21 +24,14 @@ do:
   - articleReview:
       do:
         - requestReview:
-            call: http
+            call: activity
             with:
-              method: POST
-              endpoint: http://approval-gateway:8080/approvals
-              headers:
-                Content-Type: application/json
-              body:
-                workflowId: '${ $data.workflow.workflow_execution_id }'
-                runId: '${ $data.workflow.workflow_execution_run_id }'
-                stepId: article-review
-                title: Review article draft
-                context: Approve the draft to mark it ready for publication.
-                payload:
-                  headline: '${ $input.headline }'
-                  draft: '${ $input.draft }'
+              name: requestApproval
+              taskQueue: hoverseer-activities
+              arguments:
+                - title: Review article draft
+                  context: Approve the draft to mark it ready for publication.
+                  payload: '${ {headline: $input.headline, draft: $input.draft} }'
         - awaitDecision:
             metadata:
               timeout: 5m

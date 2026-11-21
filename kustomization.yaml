@@ -15,4 +15,5 @@ configMapGenerator:
   - name: gateway-source
     files:
       - gateway/server.mjs
+      - gateway/hitly.mjs
       - gateway/openapi.json

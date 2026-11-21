@@ -6,7 +6,7 @@ The sample workflow automatically approves up to **$100.00**. Larger amounts cre
 
 ## Choose a deployment
 
-Both paths run Zigflow, Studio, Temporal, HITLy and the approval gateway. Zigflow loads every project saved as `workflows/<project>/workflow.yaml` in the shared volume. The gateway keeps the HITLy project credentials out of the workflow definition and Temporal activity inputs. It calls the HITLy Temporal plugin over HTTP and uses a key scoped to the run and step when creating an approval. Internal DNS names are the same for both paths.
+Both deployments run Zigflow for workflow orchestration and `cruncher` for Temporal activities. Zigflow loads every project saved as `workflows/<project>/workflow.yaml` in the shared volume. Cruncher polls `hoverseer-activities` and registers `requestApproval`. It calls the HITLy service at `hotl:3001` using its own credentials. Both runners connect to the same Temporal namespace.
 
 Prerequisites are Bash, OpenSSL, Docker with Compose for the Docker path, or a Kubernetes cluster with a default storage class and `kubectl` for the Kubernetes path. The example below uses kind and Docker to build the two upstream app images. First builds download the pinned upstream source and dependencies.
 
@@ -28,19 +28,19 @@ kind create cluster --name hoverseer
 kubectl config use-context kind-hoverseer
 ./hoverseer init
 ./hoverseer kubernetes build
-kind load docker-image hoverseer-studio:local hoverseer-hitly:local hoverseer-api:local --name hoverseer
+kind load docker-image hoverseer-studio:local hoverseer-hitly:local hoverseer-api:local hoverseer-cruncher:local --name hoverseer
 ./hoverseer kubernetes up
 ./hoverseer kubernetes forward
 ```
 
-Keep port forwarding running in a separate terminal. Check startup with `kubectl -n hoverseer get pods,pvc`. On another Kubernetes cluster, publish the three images to a registry the cluster can pull from, set the corresponding image names in a Kustomize overlay or in `k8s/stack.yaml`, and run `./hoverseer kubernetes up` using that context. Use only one deployment on the same set of local ports at a time.
+Keep port forwarding running in a separate terminal. Check startup with `kubectl -n hoverseer get pods,pvc`. On another Kubernetes cluster, publish the four images to a registry the cluster can pull from, set the corresponding image names in a Kustomize overlay or in `k8s/stack.yaml`, and run `./hoverseer kubernetes up` using that context. Use only one deployment on the same set of local ports at a time.
 
 ### Open the apps
 
 | App | Local URL | Use |
 | --- | --- | --- |
 | Zigflow Studio | [localhost:3000](http://localhost:3000) | Create or edit workflow projects |
-| HITLy | [localhost:3001](http://localhost:3001) | Review requests and record decisions |
+| HITLy (`hotl`) | [localhost:3001](http://localhost:3001) | Review requests and record decisions |
 | Temporal Web | [localhost:8233](http://localhost:8233) | Inspect workflow status, event history and results |
 | Workflow API | [localhost:8081/openapi.json](http://localhost:8081/openapi.json) | Discover and call managed workflow routes |
 
@@ -49,7 +49,7 @@ Keep port forwarding running in a separate terminal. Check startup with `kubectl
 1. Create a local HITLy account and a project using the **Temporal** plugin.
 2. In the project's configuration, use `temporal:7233` for **Temporal address** and **Workflow address**, and `default` for **Temporal namespace**. Use `refund-review` if the interface asks for the task queue. No Temporal API key is needed for this local server.
 3. Create a project API key. Put the project ID and API key in `.env` as `HITLY_PROJECT_ID` and `HITLY_API_KEY`. Keep the generated database and authentication secrets in that file.
-4. Run `./hoverseer docker configure` or `./hoverseer kubernetes configure`. This updates the gateway. If HITLy offers a project SLA setting, set it close to the five-minute workflow wait. The Temporal deadline and HITLy inbox expiry are separate.
+4. Run `./hoverseer docker configure` or `./hoverseer kubernetes configure`. This reloads the HITLy credentials in Cruncher and the compatibility gateway. If HITLy offers a project SLA setting, set it close to the five-minute workflow wait. The Temporal deadline and HITLy inbox expiry are separate.
 
 ## Run a workflow
 
@@ -163,19 +163,28 @@ Use the same commands with `kubernetes` on that backend. Reload registers the sa
 
 ### Add a human approval
 
-From a Zigflow HTTP task, send a JSON POST to `http://approval-gateway:8080/approvals`.
+Use Zigflow’s `call: activity` task to send a request to Cruncher.
 
-| Field | Value |
-| --- | --- |
-| `workflowId` | `${ $data.workflow.workflow_execution_id }` |
-| `runId` | `${ $data.workflow.workflow_execution_run_id }` |
-| `stepId` | A stable approval checkpoint ID. For a checkpoint inside a loop, use a distinct ID for each visit. |
-| `title` | Short action name displayed in HITLy. |
-| `context` | Optional Markdown that explains the decision. |
-| `payload` | Optional JSON object with the details the reviewer needs. |
+```yaml
+- requestReview:
+    call: activity
+    with:
+      name: requestApproval
+      taskQueue: hoverseer-activities
+      arguments:
+        - title: Review article draft
+          context: Approve the draft to mark it ready for publication.
+          payload:
+            headline: '${ $input.headline }'
+```
 
-Then add a `listen` task in the main workflow for the Temporal signal `hitly.decision`. The workflow defines its own timeout and what to do with `accept` or `reject`. The gateway uses the configured HITLy project for all workflows.
+The activity takes a title, optional Markdown context, and an optional JSON object for the review details. It returns an `approvalId`. Cruncher gets the workflow execution identifiers from Temporal and uses the activity ID to send a stable idempotency key on retries. Additional named activities can register with the same worker and queue.
 
-See the [article workflow](workflows/article-review/workflow.yaml) and the [refund workflow](workflows/refund-review/workflow.yaml) for complete examples.
+Add a `listen` task in the main workflow for `hitly.decision`. The workflow owns the timeout and the branches for `accept` or `reject`. See the [article workflow](workflows/article-review/workflow.yaml) and the [refund workflow](workflows/refund-review/workflow.yaml) for complete examples.
+
+### Upgrade existing deployments
+
+- For Docker, stop or bring down the previous Compose stack before starting the renamed `hotl` service so both containers do not claim port `3001`. Keep the existing volumes. The database name, credentials, and HITLy volume are reused. On Kubernetes, the existing HITLy Deployment is updated in place and exposed by the new `hotl` Service.
+- Seeding preserves workflow files already on the shared volume. The compatibility gateway stays available for those definitions. After their active runs finish, update their review steps to the example above and reload Zigflow. Keep the gateway running while any definitions still use its HTTP endpoint.
 
 Open Studio and Temporal Web on localhost through Compose or kubectl port forwarding.
