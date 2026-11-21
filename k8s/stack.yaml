@@ -207,6 +207,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  # Keep the existing Deployment identity across upgrades.
   name: hitly
 spec:
   strategy:
@@ -218,7 +219,7 @@ spec:
       labels: {app: hitly}
     spec:
       containers:
-        - name: hitly
+        - name: hotl
           image: hoverseer-hitly:local
           imagePullPolicy: IfNotPresent
           ports:
@@ -241,11 +242,35 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: hitly
+  name: hotl
 spec:
   selector: {app: hitly}
   ports:
     - {port: 3001, targetPort: inbox}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cruncher
+spec:
+  selector:
+    matchLabels: {app: cruncher}
+  template:
+    metadata:
+      labels: {app: cruncher}
+    spec:
+      containers:
+        - name: cruncher
+          image: hoverseer-cruncher:local
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: TEMPORAL_ADDRESS, value: "temporal:7233"}
+            - name: HITLY_PROJECT_ID
+              valueFrom:
+                secretKeyRef: {name: hoverseer-config, key: HITLY_PROJECT_ID}
+            - name: HITLY_API_KEY
+              valueFrom:
+                secretKeyRef: {name: hoverseer-config, key: HITLY_API_KEY}
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -136,7 +136,7 @@ case "$backend:$action" in
     ;;
   docker:configure)
     require_env
-    docker compose up -d --no-deps approval-gateway
+    docker compose up -d --no-deps cruncher approval-gateway
     ;;
   docker:reload)
     require_env
@@ -150,6 +150,7 @@ case "$backend:$action" in
     docker build -f images/studio.Dockerfile -t hoverseer-studio:local .
     docker build -f images/hitly.Dockerfile -t hoverseer-hitly:local .
     docker build -f images/api.Dockerfile -t hoverseer-api:local .
+    docker build -f images/cruncher.Dockerfile -t hoverseer-cruncher:local .
     ;;
   kubernetes:up)
     require_env
@@ -160,7 +161,8 @@ case "$backend:$action" in
   kubernetes:configure)
     require_env
     configure_kubernetes
-    kube rollout restart deployment/approval-gateway
+    kube rollout restart deployment/cruncher deployment/approval-gateway
+    kube rollout status deployment/cruncher --timeout=120s
     kube rollout status deployment/approval-gateway --timeout=120s
     ;;
   kubernetes:reload)
@@ -173,7 +175,7 @@ case "$backend:$action" in
     trap 'exit 130' INT
     trap 'exit 143' TERM
     kube port-forward service/studio 3000:3000 & pids+=("$!")
-    kube port-forward service/hitly 3001:3001 & pids+=("$!")
+    kube port-forward service/hotl 3001:3001 & pids+=("$!")
     kube port-forward service/temporal 8233:8233 & pids+=("$!")
     kube port-forward service/api 8081:8081 & pids+=("$!")
     wait -n "${pids[@]}"
