@@ -39,3 +39,7 @@ Use the Go extension mechanism for a deterministic Temporal workflow capability 
 | End-to-end test | [`tests/e2e/tests/`](https://github.com/zigflow/zigflow/tree/main/tests/e2e/tests) |
 
 Discuss a new DSL capability in the [Zigflow repository](https://github.com/zigflow/zigflow). The [upstream extension guide](https://zigflow.dev/docs/guides/extending-the-dsl/) shows the implementation and test sequence. Once the engine and schema support the capability, use the [Studio editor checklist](#studio-editor) to add its form.
+
+## Local checks and development
+
+Run `make help` to see the development commands. `make install` installs the API and Cruncher dependencies. Then run `make check` for the same lint, format, and test targets used by CI. The format target reports whitespace errors without rewriting files. Lint needs Node.js 24, Docker with Buildx and Compose, and `kubectl`. Use `make lint-code` when you only need the source syntax checks.
