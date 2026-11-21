@@ -1,0 +1,91 @@
+name: hoverseer
+services:
+  temporal:
+    image: temporalio/temporal:1.10.1
+    command: [server, start-dev, --ip, 0.0.0.0, --db-filename, /var/lib/temporal/temporal.db]
+    volumes:
+      - temporal-data:/var/lib/temporal
+    depends_on:
+      workflow-seed:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8233:8233"
+    healthcheck:
+      test: [CMD, temporal, operator, cluster, health]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  workflow-seed:
+    image: alpine:3.23
+    command: [sh, -ec, 'mkdir -p /workflows/refund-review; test -f /workflows/refund-review/workflow.yaml || cp /seed/workflow.yaml /workflows/refund-review/workflow.yaml; chown -R 1000:1000 /workflows; chown 1000:1000 /var/lib/temporal']
+    volumes:
+      - workflow-data:/workflows
+      - ./workflows/refund-review/workflow.yaml:/seed/workflow.yaml:ro
+      - temporal-data:/var/lib/temporal
+  studio:
+    image: hoverseer-studio:local
+    build:
+      context: .
+      dockerfile: images/studio.Dockerfile
+    depends_on:
+      workflow-seed:
+        condition: service_completed_successfully
+    volumes:
+      - workflow-data:/workflows
+    ports:
+      - "127.0.0.1:3000:3000"
+  zigflow:
+    image: ghcr.io/zigflow/zigflow:0.18.1
+    command: [run, --disable-telemetry, -f, /workflows/refund-review/workflow.yaml]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    depends_on:
+      temporal:
+        condition: service_healthy
+      workflow-seed:
+        condition: service_completed_successfully
+    volumes:
+      - workflow-data:/workflows:ro
+    restart: on-failure
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hitly
+      POSTGRES_DB: hitly
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./poc init}
+    volumes:
+      - hitly-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, hitly, -d, hitly]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  hitly:
+    image: hoverseer-hitly:local
+    build:
+      context: .
+      dockerfile: images/hitly.Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://hitly:${POSTGRES_PASSWORD}@postgres:5432/hitly
+      BETTER_AUTH_URL: http://localhost:3001
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Run ./poc init}
+      HITLY_REQUIRE_VERIFIED_EMAIL: "false"
+      HITLY_MAIL_TRANSPORT: log
+    ports:
+      - "127.0.0.1:3001:3001"
+  approval-gateway:
+    image: node:24-bookworm-slim
+    command: [node, /gateway/server.mjs]
+    user: node
+    environment:
+      HITLY_PROJECT_ID: ${HITLY_PROJECT_ID:-}
+      HITLY_API_KEY: ${HITLY_API_KEY:-}
+    volumes:
+      - ./gateway:/gateway:ro
+volumes:
+  temporal-data:
+  hitly-data:
+  workflow-data:

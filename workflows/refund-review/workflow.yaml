@@ -1,0 +1,66 @@
+document:
+  dsl: 1.0.0
+  taskQueue: refund-review
+  workflowType: refundReview
+  version: 0.1.0
+  title: Refund review
+  summary: Simulate low-value refunds automatically and send larger requests to HITLy.
+input:
+  schema:
+    format: json
+    document:
+      type: object
+      required: [orderId, amountCents]
+      properties:
+        orderId:
+          type: string
+          minLength: 1
+          maxLength: 80
+        amountCents:
+          type: integer
+          minimum: 1
+          maximum: 100000000
+do:
+  - refundReview:
+      do:
+        - checkAmount:
+            export:
+              as: '${ . }'
+            set:
+              needsReview: '${ $input.amountCents > 10000 }'
+        - requestReview:
+            if: '${ $context.needsReview }'
+            call: http
+            with:
+              method: POST
+              endpoint: http://approval-gateway:8080/approvals
+              headers:
+                Content-Type: application/json
+              body:
+                workflowId: '${ $data.workflow.workflow_execution_id }'
+                runId: '${ $data.workflow.workflow_execution_run_id }'
+                stepId: refund-review
+                orderId: '${ $input.orderId }'
+                amountCents: '${ $input.amountCents }'
+        - awaitDecision:
+            if: '${ $context.needsReview }'
+            metadata:
+              timeout: 5m
+            listen:
+              to:
+                one:
+                  with:
+                    id: hitly.decision
+                    type: signal
+        - validateDecision:
+            if: '${ $context.needsReview and ($data.awaitDecision.decision != "accept") and ($data.awaitDecision.decision != "reject") }'
+            raise:
+              error:
+                type: https://example.com/errors/invalid-approval-decision
+                status: 400
+                title: Unexpected HITLy decision
+        - finish:
+            set:
+              status: '${ if ($context.needsReview | not) then "auto_approved" elif $data.awaitDecision.decision == "accept" then "approved" else "rejected" end }'
+              orderId: '${ $input.orderId }'
+              amountCents: '${ $input.amountCents }'
