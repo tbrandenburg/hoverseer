@@ -93,6 +93,7 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       HOVERSEER_API_TOKEN: ${HOVERSEER_API_TOKEN:-}
+      HOVERSEER_PUBLIC_URL: ${HOVERSEER_PUBLIC_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}}
     depends_on:
       temporal:
         condition: service_healthy

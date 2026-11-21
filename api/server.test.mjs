@@ -44,7 +44,8 @@ test('OpenAPI discovers each enabled workflow and its Zigflow input schema', asy
   assert.equal(response.statusCode, 200);
   const spec = response.json();
   assert.deepEqual(Object.keys(spec.paths).sort(), [
-    '/openapi.json', '/v1/runs/{workflowId}', '/v1/workflows',
+    '/.well-known/agent-card.json', '/a2a/message:send', '/a2a/tasks/{id}', '/a2a/tasks/{id}:cancel',
+    '/mcp', '/openapi.json', '/v1/runs/{workflowId}', '/v1/workflows',
     '/v1/workflows/article-review/runs', refundRoute,
   ]);
   const refund = spec.paths[refundRoute].post;
