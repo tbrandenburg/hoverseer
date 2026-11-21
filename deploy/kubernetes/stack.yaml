@@ -140,6 +140,7 @@ spec:
               - {key: seed-workflows.sh, path: seed-workflows.sh}
               - {key: refund-review.yaml, path: refund-review/workflow.yaml}
               - {key: article-review.yaml, path: article-review/workflow.yaml}
+              - {key: shell-example.yaml, path: shell-example/workflow.yaml}
         - name: managed-workflows
           configMap: {name: managed-workflows}
 ---
@@ -289,6 +290,40 @@ spec:
             - name: HITLY_API_KEY
               valueFrom:
                 secretKeyRef: {name: hoverseer-config, key: HITLY_API_KEY}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cruncher-shell
+spec:
+  selector:
+    matchLabels: {app: cruncher-shell}
+  template:
+    metadata:
+      labels: {app: cruncher-shell}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: cruncher-shell
+          image: hoverseer-cruncher:local
+          imagePullPolicy: IfNotPresent
+          command: [node, main.mjs, shell]
+          env:
+            - {name: TEMPORAL_ADDRESS, value: "temporal:7233"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: workspace, mountPath: /tmp}
+      volumes:
+        - name: workspace
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment

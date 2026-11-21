@@ -18,9 +18,10 @@ Adding a workflow, worker step, or Studio feature? Start with the [contribution 
 | `postgres` | Database server | Stores HITLy inbox and project data. |
 | `zigflow` | Workflow runner | Loads the YAML and polls the workflow task queues. Handles control flow and approval waits. |
 | `cruncher` | Activity runner | Polls `hoverseer-activities` and runs named activities. `requestApproval` calls HITLy using Cruncher's credentials. |
+| `cruncher-shell` | Shell activity runner | Runs script steps on the `hoverseer-shell` task queue with a temporary workspace. |
 | `approval-gateway` | Compatibility server | Accepts approval requests from older saved workflows that still use HTTP. |
 
-Docker Compose runs nine long-running containers during migration and eight after the compatibility gateway is retired. On Kubernetes, API, Studio and Zigflow share the `workflow` pod and YAML volume. The dashboard, Cruncher, Temporal, HITLy, Postgres and compatibility gateway each have their own deployment. Infisical runs separately if enabled.
+Docker Compose runs ten long-running containers during migration and nine after the compatibility gateway is retired. On Kubernetes, API, Studio and Zigflow share the `workflow` pod and YAML volume. The dashboard, Cruncher, Cruncher Shell, Temporal, HITLy, Postgres and compatibility gateway each have their own deployment. Infisical runs separately if enabled.
 
 ```mermaid
 flowchart TD
@@ -46,6 +47,7 @@ flowchart TD
     API -->|"Start runs and read results"| Temporal["Temporal Server and history"]
     Zigflow -->|"Poll workflow queues and schedule activities"| Temporal
     Cruncher["Cruncher activity runner"] -->|"Poll hoverseer-activities"| Temporal
+    Shell["Cruncher shell runner"] -->|"Poll hoverseer-shell"| Temporal
     Cruncher -->|"Create approval request"| HOTL["HITLy inbox · hotl"]
     HOTL -->|"Send hitly.decision signal"| Temporal
     HOTL -->|"Store review data"| Postgres[("HITLy Postgres")]
@@ -175,7 +177,7 @@ For Kubernetes, use `./hoverseer kubernetes start` with the same arguments.
 
 ## Manage workflows for HTTP callers
 
-The [managed workflow catalog](workflows/catalog.yaml) maps each public name to a Studio project directory. Both bundled projects are listed. Add another entry after creating or importing its project. Zigflow still loads the saved YAML from the shared volume. The API reads the target workflow type, task queue and input schema from that same file. Projects outside the catalog remain available through Studio and the CLI.
+The [managed workflow catalog](workflows/catalog.yaml) maps each public name to a Studio project directory. The refund and article approval projects are listed. Add another entry after creating or importing its project. Zigflow still loads the saved YAML from the shared volume. The API reads the target workflow type, task queue and input schema from that same file. Projects outside the catalog remain available through Studio and the CLI.
 
 Run `./hoverseer docker reload` after changing a catalog entry or a saved workflow. After upgrading from a checkout that stored the catalog in `deploy/`, run `./hoverseer docker up` once to recreate the API container with the new mount. On Kubernetes, use `./hoverseer kubernetes up` after changing the catalog and `./hoverseer kubernetes reload` after changing a saved workflow. If upgrading from an older checkout, run `./hoverseer init` and bring up the stack to add the API and its token while retaining your existing credentials.
 
@@ -275,11 +277,42 @@ The activity takes a title, optional Markdown context, and an optional JSON obje
 
 Add a `listen` task in the main workflow for `hitly.decision`. The workflow owns the timeout and the branches for `accept` or `reject`. See the [article workflow](workflows/article-review/workflow.yaml) and the [refund workflow](workflows/refund-review/workflow.yaml) for complete examples.
 
+### Run a multiline shell step
+
+Cruncher registers `runShell` on the dedicated `hoverseer-shell` queue. Use a YAML literal block (`|`) to write multiple commands, like a GitHub Actions `run` block.
+
+```yaml
+- runShell:
+    call: activity
+    with:
+      name: runShell
+      taskQueue: hoverseer-shell
+      arguments:
+        - shell: sh
+          timeoutSeconds: 10
+          script: |
+            printf '%s\n' 'Running shell step'
+            printf 'Message: %s\n' "$MESSAGE"
+          environment:
+            MESSAGE: '${ $input.message }'
+```
+
+Pass workflow data through environment variables and quote it in the script. The shell runner has Git and a fresh temporary working directory per activity. You can clone a repository and work with it in the same step. The directory is removed afterward. Choose `sh` or `bash`. Commands run with `-eu`, return stdout, and fail on a nonzero exit, a timeout, or output above 64 KiB.
+
+The shell worker gets no HITLy or Infisical credentials and has no shared workflow volume. Treat workflow scripts as trusted code. This deployment still allows the native Zigflow `run.shell` task, which executes inside the workflow runner.
+
+The [bundled shell example](workflows/shell-example/workflow.yaml) is available in Studio as a generic activity node. Start it with the CLI and inspect the result in Temporal Web.
+
+```bash
+./hoverseer docker start shellExample '{"message":"Hello from Hoverseer"}'
+./hoverseer kubernetes start shellExample '{"message":"Hello from Hoverseer"}'
+```
+
 ### Add a Cruncher step
 
 Use [request approval](cruncher/steps/request-approval/) as a template. Put the implementation in `activity.mjs`, its tests in `activity.test.mjs`, and the step ID, Temporal activity name, label, and input schema in `step.json`. The schema describes the input for tooling. The activity validates its arguments at runtime.
 
-Register the step in [Cruncher's activity registry](cruncher/steps/index.mjs) and rebuild Cruncher. Workflows invoke the registered name through `call: activity` on `hoverseer-activities`. Keep the registered names and input contracts compatible with saved workflows. Integration clients shared by multiple services live under `integrations/`.
+Register the step in [Cruncher's activity registry](cruncher/steps/index.mjs) and rebuild Cruncher. Workflows invoke the registered name through `call: activity` on the step’s task queue. Approval uses `hoverseer-activities` and shell uses `hoverseer-shell`. Keep the registered names and input contracts compatible with saved workflows. Integration clients shared by multiple services live under `integrations/`.
 
 ### Upgrade existing deployments
 
