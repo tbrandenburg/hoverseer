@@ -24,6 +24,27 @@ async function readJson(req) {
   }
 }
 
+function approvalDetails(input) {
+  const { title, context, payload, orderId, amountCents } = input;
+  if (title === undefined && context === undefined && payload === undefined
+      && typeof orderId === 'string' && orderId.length > 0 && orderId.length <= 80
+      && Number.isSafeInteger(amountCents) && amountCents >= 1 && amountCents <= 100000000) {
+    // Existing Studio volumes can still contain the original refund definition.
+    return {
+      actionName: 'Review simulated refund',
+      contextMarkdown: 'Review the requested USD refund. This request simulates a refund.',
+      args: { orderId, amountCents },
+    };
+  }
+
+  if (typeof title !== 'string' || !title.trim() || title.length > 160
+      || (context !== undefined && typeof context !== 'string')
+      || (payload !== undefined && (payload === null || typeof payload !== 'object' || Array.isArray(payload)))) {
+    return null;
+  }
+  return { actionName: title.trim(), contextMarkdown: context, args: payload ?? {} };
+}
+
 createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     return respond(res, 200, { configured: Boolean(projectId && apiKey) });
@@ -36,10 +57,10 @@ createServer(async (req, res) => {
   }
 
   const input = await readJson(req).catch(() => null);
-  const { workflowId, runId, stepId, orderId, amountCents } = input ?? {};
-  if (![workflowId, runId, stepId].every(value => typeof value === 'string' && /^[\w.-]{1,120}$/.test(value))
-      || typeof orderId !== 'string' || orderId.length < 1 || orderId.length > 80
-      || !Number.isSafeInteger(amountCents) || amountCents < 1 || amountCents > 100000000) {
+  const { workflowId, runId, stepId } = input ?? {};
+  const details = input && approvalDetails(input);
+  if (!details || ![workflowId, runId, stepId].every(value =>
+      typeof value === 'string' && /^[\w.-]{1,120}$/.test(value))) {
     return respond(res, 400, { error: 'Invalid approval request' });
   }
 
@@ -59,9 +80,7 @@ createServer(async (req, res) => {
         workflowId,
         address: temporalAddress,
         namespace: temporalNamespace,
-        actionName: 'Review simulated refund',
-        args: { orderId, amountCents },
-        contextMarkdown: 'Review the requested USD refund. This request simulates a refund.',
+        ...details,
       }),
     });
     if (!approval.ok) {

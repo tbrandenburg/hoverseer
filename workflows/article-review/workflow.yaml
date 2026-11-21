@@ -1,0 +1,61 @@
+document:
+  dsl: 1.0.0
+  taskQueue: articleReview
+  workflowType: articleReview
+  version: 0.1.0
+  title: Article review
+  summary: Review an article draft before it can be published.
+input:
+  schema:
+    format: json
+    document:
+      type: object
+      required: [headline, draft]
+      properties:
+        headline:
+          type: string
+          minLength: 1
+          maxLength: 140
+        draft:
+          type: string
+          minLength: 1
+          maxLength: 1000
+do:
+  - articleReview:
+      do:
+        - requestReview:
+            call: http
+            with:
+              method: POST
+              endpoint: http://approval-gateway:8080/approvals
+              headers:
+                Content-Type: application/json
+              body:
+                workflowId: '${ $data.workflow.workflow_execution_id }'
+                runId: '${ $data.workflow.workflow_execution_run_id }'
+                stepId: article-review
+                title: Review article draft
+                context: Approve the draft to mark it ready for publication.
+                payload:
+                  headline: '${ $input.headline }'
+                  draft: '${ $input.draft }'
+        - awaitDecision:
+            metadata:
+              timeout: 5m
+            listen:
+              to:
+                one:
+                  with:
+                    id: hitly.decision
+                    type: signal
+        - validateDecision:
+            if: '${ ($data.awaitDecision.decision != "accept") and ($data.awaitDecision.decision != "reject") }'
+            raise:
+              error:
+                type: https://example.com/errors/invalid-approval-decision
+                status: 400
+                title: Unexpected HITLy decision
+        - finish:
+            set:
+              status: '${ if $data.awaitDecision.decision == "accept" then "ready_to_publish" else "changes_requested" end }'
+              headline: '${ $input.headline }'

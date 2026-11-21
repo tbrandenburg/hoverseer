@@ -17,10 +17,11 @@ services:
       retries: 30
   workflow-seed:
     image: alpine:3.23
-    command: [sh, -ec, 'mkdir -p /workflows/refund-review; test -f /workflows/refund-review/workflow.yaml || cp /seed/workflow.yaml /workflows/refund-review/workflow.yaml; chown -R 1000:1000 /workflows; chown 1000:1000 /var/lib/temporal']
+    command: [sh, -ec, 'sh /seed-workflows.sh; chown 1000:1000 /var/lib/temporal']
     volumes:
       - workflow-data:/workflows
-      - ./workflows/refund-review/workflow.yaml:/seed/workflow.yaml:ro
+      - ./workflows:/seed:ro
+      - ./deploy/seed-workflows.sh:/seed-workflows.sh:ro
       - temporal-data:/var/lib/temporal
   studio:
     image: hoverseer-studio:local
@@ -36,7 +37,7 @@ services:
       - "127.0.0.1:3000:3000"
   zigflow:
     image: ghcr.io/zigflow/zigflow:0.18.1
-    command: [run, --disable-telemetry, -f, /workflows/refund-review/workflow.yaml]
+    command: [run, --disable-telemetry, --dir, /workflows, --glob, "*/workflow.yaml"]
     environment:
       TEMPORAL_ADDRESS: temporal:7233
     depends_on:
@@ -77,14 +78,13 @@ services:
     ports:
       - "127.0.0.1:3001:3001"
   approval-gateway:
-    image: node:24-bookworm-slim
-    command: [node, /gateway/server.mjs]
-    user: node
+    image: hoverseer-gateway:local
+    build:
+      context: .
+      dockerfile: images/gateway.Dockerfile
     environment:
       HITLY_PROJECT_ID: ${HITLY_PROJECT_ID:-}
       HITLY_API_KEY: ${HITLY_API_KEY:-}
-    volumes:
-      - ./gateway:/gateway:ro
 volumes:
   temporal-data:
   hitly-data:

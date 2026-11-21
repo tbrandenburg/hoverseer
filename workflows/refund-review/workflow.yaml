@@ -40,8 +40,11 @@ do:
                 workflowId: '${ $data.workflow.workflow_execution_id }'
                 runId: '${ $data.workflow.workflow_execution_run_id }'
                 stepId: refund-review
-                orderId: '${ $input.orderId }'
-                amountCents: '${ $input.amountCents }'
+                title: Review simulated refund
+                context: Review the requested USD refund. This request simulates a refund.
+                payload:
+                  orderId: '${ $input.orderId }'
+                  amountCents: '${ $input.amountCents }'
         - awaitDecision:
             if: '${ $context.needsReview }'
             metadata:

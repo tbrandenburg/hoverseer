@@ -89,7 +89,7 @@ spec:
       initContainers:
         - name: seed
           image: alpine:3.23
-          command: [sh, -ec, 'mkdir -p /workflows/refund-review; test -f /workflows/refund-review/workflow.yaml || cp /seed/workflow.yaml /workflows/refund-review/workflow.yaml; chown -R 1000:1000 /workflows']
+          command: [sh, /seed/seed-workflows.sh]
           volumeMounts:
             - {name: workflow-seed, mountPath: /seed, readOnly: true}
             - {name: workflow-data, mountPath: /workflows}
@@ -105,7 +105,7 @@ spec:
             - {name: workflow-data, mountPath: /workflows}
         - name: zigflow
           image: ghcr.io/zigflow/zigflow:0.18.1
-          args: [run, --disable-telemetry, --health-listen-address, "0.0.0.0:3002", -f, /workflows/refund-review/workflow.yaml]
+          args: [run, --disable-telemetry, --health-listen-address, "0.0.0.0:3002", --dir, /workflows, --glob, "*/workflow.yaml"]
           env:
             - {name: TEMPORAL_ADDRESS, value: "temporal:7233"}
           readinessProbe:
@@ -116,7 +116,12 @@ spec:
         - name: workflow-data
           persistentVolumeClaim: {claimName: workflow-data}
         - name: workflow-seed
-          configMap: {name: workflow-seed}
+          configMap:
+            name: workflow-seed
+            items:
+              - {key: seed-workflows.sh, path: seed-workflows.sh}
+              - {key: refund-review.yaml, path: refund-review/workflow.yaml}
+              - {key: article-review.yaml, path: article-review/workflow.yaml}
 ---
 apiVersion: v1
 kind: Service
