@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+invocation_dir=$PWD
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
 usage() {
@@ -8,6 +9,8 @@ Usage
   ./hoverseer init
   ./hoverseer docker up|configure|reload|stop
   ./hoverseer kubernetes build|up|configure|reload|forward
+  ./hoverseer docker|kubernetes start WORKFLOW_TYPE JSON [--task-queue QUEUE]
+  ./hoverseer docker|kubernetes import PROJECT WORKFLOW_FILE
   ./hoverseer docker|kubernetes start AMOUNT_CENTS [ORDER_ID]
 USAGE
 }
@@ -53,26 +56,69 @@ require_env() {
   fi
 }
 
+exec_service() {
+  local service=$1
+  shift
+  if [[ $backend == docker ]]; then
+    require_env
+    docker compose exec -T "$service" "$@"
+  elif [[ $service == studio ]]; then
+    kube exec -i deployment/workflow -c studio -- "$@"
+  else
+    kube exec -i deployment/temporal -- "$@"
+  fi
+}
+
 start_workflow() {
-  local amount=${1:-}
+  local workflow_type=$1
+  local input=$2
+  local queue=$3
+  local id_prefix=${4:-run}
+  local workflow_id="$id_prefix-$(openssl rand -hex 12)"
+  exec_service temporal temporal workflow start --type "$workflow_type" \
+    --task-queue "$queue" --workflow-id "$workflow_id" --input="$input"
+  printf 'Temporal Web: http://localhost:8233/namespaces/default/workflows/%s\n' "$workflow_id"
+}
+
+start_refund() {
+  local amount=$1
   local order=${2:-example-order}
   if [[ ! $amount =~ ^[1-9][0-9]{0,8}$ ]] || (( amount > 100000000 )) ||
       [[ ! $order =~ ^[a-zA-Z0-9._-]{1,80}$ ]]; then
     printf '%s\n' 'Use 1–100000000 cents and an order ID containing only letters, numbers, periods, underscores or dashes.' >&2
     exit 2
   fi
-  local workflow_id="refund-$(openssl rand -hex 12)"
   local input
   printf -v input '{"orderId":"%s","amountCents":%s}' "$order" "$amount"
-  local -a args=(workflow start --type refundReview --task-queue refund-review
-    --workflow-id "$workflow_id" --input "$input")
-  if [[ $backend == docker ]]; then
-    require_env
-    docker compose exec -T temporal temporal "${args[@]}"
-  else
-    kube exec deployment/temporal -- temporal "${args[@]}"
+  start_workflow refundReview "$input" refund-review refund
+}
+
+import_workflow() {
+  local project=$1
+  local file=$2
+  if [[ $file != /* ]]; then
+    file=$invocation_dir/$file
   fi
-  printf 'Temporal Web: http://localhost:8233/namespaces/default/workflows/%s\n' "$workflow_id"
+  if [[ ! $project =~ ^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?$ || ! -f $file ]]; then
+    printf '%s\n' 'Provide a Studio project name and an existing workflow YAML file.' >&2
+    exit 2
+  fi
+
+  exec_service studio sh -eu -c '
+    root=${ZIGFLOW_STORAGE_DIR:-/workflows}
+    project_dir="$root/$1"
+    stage=$(mktemp "$root/.import.XXXXXX.yaml")
+    trap "rm -f -- \"\$stage\"" EXIT
+    cat > "$stage"
+    zigflow validate --disable-telemetry "$stage"
+    chmod 644 "$stage"
+    mkdir -p "$project_dir"
+    if ! ln -T "$stage" "$project_dir/workflow.yaml"; then
+      printf "%s\n" "Could not import. Edit an existing project in Studio." >&2
+      exit 1
+    fi
+  ' sh "$project" < "$file"
+  printf 'Imported %s. Run ./hoverseer %s reload to register it.\n' "$project" "$backend"
 }
 
 case "$backend:$action" in
@@ -123,7 +169,23 @@ case "$backend:$action" in
     wait -n "${pids[@]}"
     ;;
   docker:start|kubernetes:start)
-    start_workflow "${3:-}" "${4:-}"
+    if [[ ${3:-} =~ ^[0-9]+$ && $# -le 4 ]]; then
+      start_refund "$3" "${4:-}"
+    elif [[ $# -eq 4 && -n $3 && -n $4 ]]; then
+      start_workflow "$3" "$4" "$3"
+    elif [[ $# -eq 6 && -n $3 && -n $4 && $5 == --task-queue && -n $6 ]]; then
+      start_workflow "$3" "$4" "$6"
+    else
+      usage
+      exit 2
+    fi
+    ;;
+  docker:import|kubernetes:import)
+    if [[ $# -ne 4 ]]; then
+      usage
+      exit 2
+    fi
+    import_workflow "$3" "$4"
     ;;
   *) usage; exit 2 ;;
 esac
