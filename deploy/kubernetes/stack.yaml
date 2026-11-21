@@ -118,6 +118,7 @@ spec:
           args: [run, --disable-telemetry, --health-listen-address, "0.0.0.0:3002", --dir, /workflows, --glob, "*/workflow.yaml"]
           env:
             - {name: TEMPORAL_ADDRESS, value: "temporal:7233"}
+            - {name: WORKFLOW_FILE, value: ""}
           readinessProbe:
             httpGet: {path: /readyz, port: 3002}
           volumeMounts:

@@ -46,9 +46,11 @@ lint-docker:
 		docker buildx build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file "$$dockerfile" .; \
 	done
 	POSTGRES_PASSWORD=checks-only BETTER_AUTH_SECRET=checks-only docker compose config --quiet
+	POSTGRES_PASSWORD=checks-only BETTER_AUTH_SECRET=checks-only docker compose config --format json \
+		| grep -q '"WORKFLOW_FILE": ""' # Zigflow must not load the image's default /app/workflow.yaml
 
 lint-kubernetes:
-	kubectl kustomize . > /dev/null
+	kubectl kustomize . | grep -A1 'name: WORKFLOW_FILE' | grep -q 'value: ""' # same Zigflow default as Compose
 
 format:
 	git diff --check "$$(git hash-object -t tree /dev/null)"
