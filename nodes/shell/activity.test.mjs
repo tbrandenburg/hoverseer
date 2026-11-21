@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { stat } from 'node:fs/promises';
 import { test } from 'node:test';
-import { Context } from '@temporalio/activity';
+import { Context } from '../../cruncher/activity-runtime.mjs';
 import { runShell } from './activity.mjs';
 
 test('passes workflow data literally and cleans up the working directory', async t => {

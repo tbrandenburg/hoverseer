@@ -1,13 +1,17 @@
 FROM ghcr.io/zigflow/zigflow:0.18.1 AS zigflow
 FROM node:24-bookworm-slim AS build
 ARG STUDIO_REF=125ef643bcf92948dc0acc94c9ca9dfa11c4847b
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl patch && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=zigflow /app/app /usr/local/bin/zigflow
 RUN curl -fsSL --retry 3 -o /tmp/studio.tar.gz "https://codeload.github.com/zigflow/studio/tar.gz/${STUDIO_REF}" \
     && tar -xzf /tmp/studio.tar.gz --strip-components=1 \
     && rm /tmp/studio.tar.gz \
-    && npm ci \
+    && npm ci
+COPY nodes/ ./hoverseer-nodes/
+COPY deploy/studio/ActivityNodeForm.svelte deploy/studio/nodes.ts ./src/lib/hoverseer/
+COPY deploy/studio/hoverseer-nodes.patch /tmp/hoverseer-nodes.patch
+RUN patch --batch --fuzz=0 -p1 < /tmp/hoverseer-nodes.patch \
     && npm run build \
     && npm prune --omit=dev
 

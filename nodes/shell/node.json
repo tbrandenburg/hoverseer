@@ -1,0 +1,49 @@
+{
+  "id": "shell",
+  "label": "Run shell",
+  "activity": "runShell",
+  "taskQueue": "hoverseer-shell",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "script"
+    ],
+    "properties": {
+      "script": {
+        "type": "string",
+        "minLength": 1,
+        "default": "printf '%s\\n' 'Hello from Hoverseer'"
+      },
+      "shell": {
+        "enum": [
+          "sh",
+          "bash"
+        ],
+        "default": "sh"
+      },
+      "environment": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "timeoutSeconds": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 300,
+        "default": 60
+      }
+    }
+  },
+  "multiline": [
+    "script"
+  ],
+  "activityOptions": {
+    "startToCloseTimeout": {
+      "seconds": 305
+    },
+    "retryPolicy": {
+      "maximumAttempts": 1
+    }
+  }
+}

@@ -60,7 +60,8 @@ flowchart TD
 | Path | Contents |
 | --- | --- |
 | `api/` | REST, MCP and A2A workflow endpoints |
-| `cruncher/` | Activity worker and reusable steps |
+| `cruncher/` | Temporal activity worker startup and credentials |
+| `nodes/` | Shared Studio definitions, activity handlers, tests and YAML examples |
 | `gateway/` | Compatibility gateway for older approval workflows |
 | `integrations/` | Integration clients shared by services |
 | `workflows/` | Bundled workflows and their public catalog |
@@ -301,18 +302,16 @@ Pass workflow data through environment variables and quote it in the script. The
 
 The shell worker gets no HITLy or Infisical credentials and has no shared workflow volume. Treat workflow scripts as trusted code. This deployment still allows the native Zigflow `run.shell` task, which executes inside the workflow runner.
 
-The [bundled shell example](workflows/shell-example/workflow.yaml) is available in Studio as a generic activity node. Start it with the CLI and inspect the result in Temporal Web.
+The [bundled shell example](workflows/shell-example/workflow.yaml) opens in Studio with the Run shell inspector. Start it with the CLI and inspect the result in Temporal Web.
 
 ```bash
 ./hoverseer docker start shellExample '{"message":"Hello from Hoverseer"}'
 ./hoverseer kubernetes start shellExample '{"message":"Hello from Hoverseer"}'
 ```
 
-### Add a Cruncher step
+### Add a worker node
 
-Use [request approval](cruncher/steps/request-approval/) as a template. Put the implementation in `activity.mjs`, its tests in `activity.test.mjs`, and the step ID, Temporal activity name, label, and input schema in `step.json`. The schema describes the input for tooling. The activity validates its arguments at runtime.
-
-Register the step in [Cruncher's activity registry](cruncher/steps/index.mjs) and rebuild Cruncher. Workflows invoke the registered name through `call: activity` on the step’s task queue. Approval uses `hoverseer-activities` and shell uses `hoverseer-shell`. Keep the registered names and input contracts compatible with saved workflows. Integration clients shared by multiple services live under `integrations/`.
+Start with the [node guide](nodes/README.md). Open a workflow body in Studio to add **Request approval** or **Run shell** from the palette and edit its inputs in the inspector. Studio saves standard Zigflow `call: activity` YAML using the name and queue from the node definition.
 
 ### Upgrade existing deployments
 
