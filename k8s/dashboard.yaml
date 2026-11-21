@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+spec:
+  selector:
+    matchLabels: {app: dashboard}
+  template:
+    metadata:
+      labels: {app: dashboard}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: dashboard
+          image: ghcr.io/gethomepage/homepage:v2.8.0
+          ports:
+            - {name: http, containerPort: 3000}
+          env:
+            - {name: HOMEPAGE_ALLOWED_HOSTS, value: "localhost:8082,127.0.0.1:8082"}
+            - {name: HOMEPAGE_VAR_STUDIO_URL, value: "http://localhost:3000"}
+            - {name: HOMEPAGE_VAR_HOTL_URL, value: "http://localhost:3001"}
+            - {name: HOMEPAGE_VAR_TEMPORAL_URL, value: "http://localhost:8233"}
+            - {name: HOMEPAGE_VAR_API_DOCS_URL, value: "http://localhost:8081/openapi.json"}
+            - {name: HOMEPAGE_VAR_INFISICAL_URL, value: "http://localhost:8084"}
+          readinessProbe:
+            tcpSocket: {port: http}
+          volumeMounts:
+            - {name: config, mountPath: /app/config/settings.yaml, subPath: settings.yaml, readOnly: true}
+            - {name: config, mountPath: /app/config/services.yaml, subPath: services.yaml, readOnly: true}
+            - {name: config, mountPath: /app/config/widgets.yaml, subPath: widgets.yaml, readOnly: true}
+            - {name: config, mountPath: /app/config/bookmarks.yaml, subPath: bookmarks.yaml, readOnly: true}
+      volumes:
+        - name: config
+          configMap:
+            name: dashboard-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+spec:
+  selector: {app: dashboard}
+  ports:
+    - {name: http, port: 3000, targetPort: http}

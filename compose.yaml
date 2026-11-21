@@ -1,5 +1,21 @@
 name: hoverseer
 services:
+  dashboard:
+    image: ghcr.io/gethomepage/homepage:v2.8.0
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: ${HOVERSEER_DASHBOARD_HOSTS:-localhost:${HOVERSEER_DASHBOARD_PORT:-8082},127.0.0.1:${HOVERSEER_DASHBOARD_PORT:-8082}}
+      HOMEPAGE_VAR_STUDIO_URL: ${HOVERSEER_STUDIO_URL:-http://localhost:3000}
+      HOMEPAGE_VAR_HOTL_URL: ${HOVERSEER_HOTL_URL:-http://localhost:3001}
+      HOMEPAGE_VAR_TEMPORAL_URL: ${HOVERSEER_TEMPORAL_WEB_URL:-http://localhost:8233}
+      HOMEPAGE_VAR_API_DOCS_URL: ${HOVERSEER_API_DOCS_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}/openapi.json}
+      HOMEPAGE_VAR_INFISICAL_URL: ${HOVERSEER_INFISICAL_UI_URL:-http://localhost:8084}
+    volumes:
+      - ./deploy/dashboard/settings.yaml:/app/config/settings.yaml:ro
+      - ./deploy/dashboard/services.yaml:/app/config/services.yaml:ro
+      - ./deploy/dashboard/widgets.yaml:/app/config/widgets.yaml:ro
+      - ./deploy/dashboard/bookmarks.yaml:/app/config/bookmarks.yaml:ro
+    ports:
+      - "127.0.0.1:${HOVERSEER_DASHBOARD_PORT:-8082}:3000"
   temporal:
     image: temporalio/temporal:1.10.1
     command: [server, start-dev, --ip, 0.0.0.0, --db-filename, /var/lib/temporal/temporal.db]
@@ -86,6 +102,9 @@ services:
       temporal:
         condition: service_healthy
     restart: on-failure
+    env_file:
+      - path: ./cruncher/.env.infisical
+        required: false
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       HITLY_PROJECT_ID: ${HITLY_PROJECT_ID:-}

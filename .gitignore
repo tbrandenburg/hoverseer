@@ -2,3 +2,4 @@
 .playwright-mcp/
 api/node_modules/
 cruncher/node_modules/
+cruncher/.env.infisical

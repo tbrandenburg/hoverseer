@@ -1,0 +1,26 @@
+- Author and review:
+    - Workflow Studio:
+        icon: mdi-sitemap-outline
+        href: "{{HOMEPAGE_VAR_STUDIO_URL}}"
+        siteMonitor: http://studio:3000/
+        description: Build and edit Zigflow workflows
+    - Approval inbox:
+        icon: mdi-account-check-outline
+        href: "{{HOMEPAGE_VAR_HOTL_URL}}"
+        siteMonitor: http://hotl:3001/api/v1/health
+        description: Review requests in HITLy
+- Operate:
+    - Temporal Web:
+        icon: mdi-timeline-clock-outline
+        href: "{{HOMEPAGE_VAR_TEMPORAL_URL}}"
+        siteMonitor: http://temporal:8233/
+        description: Inspect active runs, history and results
+    - Workflow API:
+        icon: mdi-api
+        href: "{{HOMEPAGE_VAR_API_DOCS_URL}}"
+        siteMonitor: http://api:8081/openapi.json
+        description: Discover REST, MCP and A2A operations
+    - Credentials:
+        icon: mdi-key-variant
+        href: "{{HOMEPAGE_VAR_INFISICAL_URL}}"
+        description: Manage integration credentials in Infisical
