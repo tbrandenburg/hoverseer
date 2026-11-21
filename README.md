@@ -4,6 +4,8 @@ Hoverseer runs workflows with human approval. Author workflows in Zigflow Studio
 
 The sample workflow automatically approves up to **$100.00**. Larger amounts create an inbox item and wait up to five minutes for a reviewer. HITLy sends a Temporal signal with the decision. Zigflow returns `approved` or `rejected`. A missed deadline fails the execution with a timeout.
 
+Adding a workflow, worker step, or Studio feature? Start with the [contribution map](CONTRIBUTING.md).
+
 ## Architecture
 
 | Container | Type | Purpose |
