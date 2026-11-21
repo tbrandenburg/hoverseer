@@ -304,7 +304,7 @@ spec:
       containers:
         - name: gateway
           image: node:24-bookworm-slim
-          command: [node, /gateway/server.mjs]
+          command: [node, /app/gateway/server.mjs]
           ports:
             - {name: http, containerPort: 8080}
           env:
@@ -320,10 +320,15 @@ spec:
             runAsUser: 1000
             runAsNonRoot: true
           volumeMounts:
-            - {name: source, mountPath: /gateway, readOnly: true}
+            - {name: source, mountPath: /app, readOnly: true}
       volumes:
         - name: source
-          configMap: {name: gateway-source}
+          configMap:
+            name: gateway-source
+            items:
+              - {key: server.mjs, path: gateway/server.mjs}
+              - {key: openapi.json, path: gateway/openapi.json}
+              - {key: hitly-client.mjs, path: integrations/hitly/client.mjs}
 ---
 apiVersion: v1
 kind: Service

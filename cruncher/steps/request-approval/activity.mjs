@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { ApplicationFailure, Context } from '@temporalio/activity';
-import { approvalDetails, HitlyRequestError } from '../gateway/hitly.mjs';
+import { approvalDetails, HitlyRequestError } from '../../../integrations/hitly/client.mjs';
 
-export function createActivities(hitly) {
-  async function requestApproval(input) {
+export function createRequestApproval(hitly) {
+  return async function requestApproval(input) {
     const details = approvalDetails(input);
     if (!details) {
       throw ApplicationFailure.nonRetryable('Invalid approval request', 'InvalidApprovalRequest');
@@ -33,7 +33,5 @@ export function createActivities(hitly) {
       }
       throw error;
     }
-  }
-
-  return { requestApproval };
+  };
 }

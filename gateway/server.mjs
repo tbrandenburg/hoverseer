@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { approvalDetails, createHitlyClient, HitlyRequestError } from './hitly.mjs';
+import { approvalDetails, createHitlyClient, HitlyRequestError } from '../integrations/hitly/client.mjs';
 
 const openApi = JSON.parse(readFileSync(new URL('./openapi.json', import.meta.url), 'utf8'));
 const hitly = createHitlyClient();
