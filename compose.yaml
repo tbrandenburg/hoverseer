@@ -109,6 +109,8 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       HITLY_PROJECT_ID: ${HITLY_PROJECT_ID:-}
       HITLY_API_KEY: ${HITLY_API_KEY:-}
+    volumes:
+      - cruncher-workspaces:/var/lib/hoverseer/workspaces
   approval-gateway:
     image: hoverseer-gateway:local
     build:
@@ -141,3 +143,4 @@ volumes:
   temporal-data:
   hitly-data:
   workflow-data:
+  cruncher-workspaces:
