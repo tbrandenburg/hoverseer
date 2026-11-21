@@ -16,7 +16,7 @@ configMapGenerator:
   - name: gateway-source
     files:
       - gateway/server.mjs
-      - gateway/hitly.mjs
+      - hitly-client.mjs=integrations/hitly/client.mjs
       - gateway/openapi.json
   - name: dashboard-config
     files:

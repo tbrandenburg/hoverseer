@@ -1,0 +1,24 @@
+{
+  "id": "request-approval",
+  "activity": "requestApproval",
+  "label": "Request approval",
+  "inputSchema": {
+    "type": "object",
+    "required": ["title"],
+    "properties": {
+      "title": {
+        "type": "string",
+        "pattern": "\\S",
+        "maxLength": 160
+      },
+      "context": {
+        "type": "string",
+        "description": "Markdown shown to the reviewer."
+      },
+      "payload": {
+        "type": "object",
+        "description": "JSON details shown with the review request."
+      }
+    }
+  }
+}

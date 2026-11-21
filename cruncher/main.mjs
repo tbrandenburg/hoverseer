@@ -1,7 +1,7 @@
 import { NativeConnection, Worker } from '@temporalio/worker';
-import { createActivities } from './activities.mjs';
+import { createActivities } from './steps/index.mjs';
 import { loadHitlyCredentials } from './infisical.mjs';
-import { createHitlyClient } from '../gateway/hitly.mjs';
+import { createHitlyClient } from '../integrations/hitly/client.mjs';
 
 const activities = createActivities(createHitlyClient(await loadHitlyCredentials()));
 

@@ -260,6 +260,12 @@ The activity takes a title, optional Markdown context, and an optional JSON obje
 
 Add a `listen` task in the main workflow for `hitly.decision`. The workflow owns the timeout and the branches for `accept` or `reject`. See the [article workflow](workflows/article-review/workflow.yaml) and the [refund workflow](workflows/refund-review/workflow.yaml) for complete examples.
 
+### Add a Cruncher step
+
+Use [request approval](cruncher/steps/request-approval/) as a template. Put the implementation in `activity.mjs`, its tests in `activity.test.mjs`, and the step ID, Temporal activity name, label, and input schema in `step.json`. The schema describes the input for tooling. The activity validates its arguments at runtime.
+
+Register the step in [Cruncher's activity registry](cruncher/steps/index.mjs) and rebuild Cruncher. Workflows invoke the registered name through `call: activity` on `hoverseer-activities`. Keep the registered names and input contracts compatible with saved workflows. Integration clients shared by multiple services live under `integrations/`.
+
 ### Upgrade existing deployments
 
 - For Docker, stop or bring down the previous Compose stack before starting the renamed `hotl` service so both containers do not claim port `3001`. Keep the existing volumes. The database name, credentials, and HITLy volume are reused. On Kubernetes, the existing HITLy Deployment is updated in place and exposed by the new `hotl` Service.
