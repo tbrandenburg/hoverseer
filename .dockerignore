@@ -1,6 +1,7 @@
 *
-!images/
-!images/*.Dockerfile
+!deploy/
+!deploy/images/
+!deploy/images/*.Dockerfile
 !gateway/
 !gateway/server.mjs
 !gateway/openapi.json
