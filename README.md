@@ -16,9 +16,10 @@ The sample workflow automatically approves up to **$100.00**. Larger amounts cre
 | `postgres` | Database server | Stores HITLy inbox and project data. |
 | `zigflow` | Workflow runner | Loads the YAML and polls the workflow task queues. Handles control flow and approval waits. |
 | `cruncher` | Activity runner | Polls `hoverseer-activities` and runs named activities. `requestApproval` calls HITLy using Cruncher's credentials. |
+| `cruncher-shell` | Shell activity runner | Runs script steps on the `hoverseer-shell` task queue with a temporary workspace. |
 | `approval-gateway` | Compatibility server | Accepts approval requests from older saved workflows that still use HTTP. |
 
-Docker Compose runs nine long-running containers during migration and eight after the compatibility gateway is retired. On Kubernetes, API, Studio and Zigflow share the `workflow` pod and YAML volume. The dashboard, Cruncher, Temporal, HITLy, Postgres and compatibility gateway each have their own deployment. Infisical runs separately if enabled.
+Docker Compose runs ten long-running containers during migration and nine after the compatibility gateway is retired. On Kubernetes, API, Studio and Zigflow share the `workflow` pod and YAML volume. The dashboard, Cruncher, Cruncher Shell, Temporal, HITLy, Postgres and compatibility gateway each have their own deployment. Infisical runs separately if enabled.
 
 ```mermaid
 flowchart TD
@@ -44,6 +45,7 @@ flowchart TD
     API -->|"Start runs and read results"| Temporal["Temporal Server and history"]
     Zigflow -->|"Poll workflow queues and schedule activities"| Temporal
     Cruncher["Cruncher activity runner"] -->|"Poll hoverseer-activities"| Temporal
+    Shell["Cruncher shell runner"] -->|"Poll hoverseer-shell"| Temporal
     Cruncher -->|"Create approval request"| HOTL["HITLy inbox · hotl"]
     HOTL -->|"Send hitly.decision signal"| Temporal
     HOTL -->|"Store review data"| Postgres[("HITLy Postgres")]
@@ -275,26 +277,29 @@ Add a `listen` task in the main workflow for `hitly.decision`. The workflow owns
 
 ### Run a multiline shell step
 
-Use a YAML literal block (`|`) to write multiple commands, like a GitHub Actions `run` block. Hoverseer uses Zigflow's built-in [shell task](https://zigflow.dev/docs/dsl/tasks/run/#shell) for this step.
+Cruncher registers `runShell` on the dedicated `hoverseer-shell` queue. Use a YAML literal block (`|`) to write multiple commands, like a GitHub Actions `run` block.
 
 ```yaml
 - runShell:
-    run:
-      shell:
-        command: /bin/sh
-        arguments:
-          - -c
-          - |
-            set -eu
+    call: activity
+    with:
+      name: runShell
+      taskQueue: hoverseer-shell
+      arguments:
+        - shell: sh
+          timeoutSeconds: 10
+          script: |
             printf '%s\n' 'Running shell step'
             printf 'Message: %s\n' "$MESSAGE"
-        environment:
-          MESSAGE: '${ $input.message }'
+          environment:
+            MESSAGE: '${ $input.message }'
 ```
 
-Configure the executable, arguments and environment in the workflow. Pass caller values through environment variables and quote them in the script so the shell treats them as data. Zigflow runs the command inside its worker container with the worker's permissions and environment. A successful step returns stdout. A nonzero exit fails the activity.
+Pass workflow data through environment variables and quote it in the script. The shell runner has Git and a fresh temporary working directory per activity. You can clone a repository and work with it in the same step. The directory is removed afterward. Choose `sh` or `bash`. Commands run with `-eu`, return stdout, and fail on a nonzero exit, a timeout, or output above 64 KiB.
 
-The [bundled shell example](workflows/shell-example/workflow.yaml) sets a ten-second activity timeout and one attempt. Open it in Studio to edit the script. Start it with the CLI and inspect the result in Temporal Web.
+The shell worker gets no HITLy or Infisical credentials and has no shared workflow volume. Treat workflow scripts as trusted code. This deployment still allows the native Zigflow `run.shell` task, which executes inside the workflow runner.
+
+The [bundled shell example](workflows/shell-example/workflow.yaml) is available in Studio as a generic activity node. Start it with the CLI and inspect the result in Temporal Web.
 
 ```bash
 ./hoverseer docker start shellExample '{"message":"Hello from Hoverseer"}'
@@ -305,7 +310,7 @@ The [bundled shell example](workflows/shell-example/workflow.yaml) sets a ten-se
 
 Use [request approval](cruncher/steps/request-approval/) as a template. Put the implementation in `activity.mjs`, its tests in `activity.test.mjs`, and the step ID, Temporal activity name, label, and input schema in `step.json`. The schema describes the input for tooling. The activity validates its arguments at runtime.
 
-Register the step in [Cruncher's activity registry](cruncher/steps/index.mjs) and rebuild Cruncher. Workflows invoke the registered name through `call: activity` on `hoverseer-activities`. Keep the registered names and input contracts compatible with saved workflows. Integration clients shared by multiple services live under `integrations/`.
+Register the step in [Cruncher's activity registry](cruncher/steps/index.mjs) and rebuild Cruncher. Workflows invoke the registered name through `call: activity` on the step’s task queue. Approval uses `hoverseer-activities` and shell uses `hoverseer-shell`. Keep the registered names and input contracts compatible with saved workflows. Integration clients shared by multiple services live under `integrations/`.
 
 ### Upgrade existing deployments
 

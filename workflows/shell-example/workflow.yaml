@@ -20,17 +20,18 @@ do:
       metadata:
         activityOptions:
           startToCloseTimeout:
-            seconds: 10
+            seconds: 15
           retryPolicy:
             maximumAttempts: 1
-      run:
-        shell:
-          command: /bin/sh
-          arguments:
-            - -c
-            - |
-              set -eu
+      call: activity
+      with:
+        name: runShell
+        taskQueue: hoverseer-shell
+        arguments:
+          - shell: sh
+            timeoutSeconds: 10
+            script: |
               printf '%s\n' 'Running shell step'
               printf 'Message: %s\n' "$MESSAGE"
-          environment:
-            MESSAGE: '${ $input.message }'
+            environment:
+              MESSAGE: '${ $input.message }'

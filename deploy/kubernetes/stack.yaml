@@ -294,6 +294,40 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: cruncher-shell
+spec:
+  selector:
+    matchLabels: {app: cruncher-shell}
+  template:
+    metadata:
+      labels: {app: cruncher-shell}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: cruncher-shell
+          image: hoverseer-cruncher:local
+          imagePullPolicy: IfNotPresent
+          command: [node, main.mjs, shell]
+          env:
+            - {name: TEMPORAL_ADDRESS, value: "temporal:7233"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: workspace, mountPath: /tmp}
+      volumes:
+        - name: workspace
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: approval-gateway
 spec:
   selector:

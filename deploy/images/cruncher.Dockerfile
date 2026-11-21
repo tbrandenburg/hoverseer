@@ -1,4 +1,7 @@
 FROM node:24-bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/cruncher
 COPY cruncher/package.json cruncher/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund

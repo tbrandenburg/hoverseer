@@ -6,3 +6,6 @@ export function createActivities(hitly) {
     [requestApproval.activity]: createRequestApproval(hitly),
   };
 }
+
+export { runShell } from './run-shell/activity.mjs';
+export { default as shellStep } from './run-shell/step.json' with { type: 'json' };
