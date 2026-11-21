@@ -1,11 +1,11 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
 import swagger from '@fastify/swagger';
-import { WorkflowExecutionAlreadyStartedError, WorkflowNotFoundError } from '@temporalio/client';
-import stringify from 'json-stable-stringify';
 import { loadCatalog } from './catalog.mjs';
+import { accessCheck, bearerAuth, fastifyAuth } from './auth.mjs';
+import { createRuns, RunError, workflowIdPattern } from './runs.mjs';
+import { installMcp } from './mcp.mjs';
+import { a2aOpenApiPaths, installA2a } from './a2a.mjs';
 
-const bearerAuth = [{ bearerAuth: [] }];
 const error = {
   type: 'object',
   required: ['message'],
@@ -31,37 +31,24 @@ const execution = {
     result: {},
   },
 };
-const idPattern = '^hoverseer-[a-f0-9]{48}$';
-
-function hash(value) {
-  return createHash('sha256').update(value).digest('hex');
+function sendRunError(request, reply, cause) {
+  if (!(cause instanceof RunError)) throw cause;
+  if (cause.status === 503) request.log.error({ err: cause }, 'Temporal request failed');
+  return reply.code(cause.status).send({ message: cause.message });
 }
 
-function authenticate(token) {
-  const expected = token ? hash(token) : undefined;
-  return async (request, reply) => {
-    if (!expected) {
-      return reply.code(503).send({ message: 'The workflow API token is not configured' });
-    }
-    const supplied = request.headers.authorization?.match(/^Bearer (.+)$/i)?.[1];
-    const actual = hash(supplied ?? '');
-    if (!timingSafeEqual(Buffer.from(actual), Buffer.from(expected))) {
-      return reply.header('WWW-Authenticate', 'Bearer').code(401).send({ message: 'A valid bearer token is required' });
-    }
-  };
-}
-
-function startResponse(reply, workflowId, runId) {
-  const statusUrl = `/v1/runs/${workflowId}`;
-  return reply.header('Location', statusUrl).code(202).send({ workflowId, runId, statusUrl });
-}
-
-export async function buildServer({ client, storageDir, catalogFile, token, logger = false }) {
+export async function buildServer({
+  client, storageDir, catalogFile, token, logger = false, publicOrigin = 'http://localhost:8081',
+}) {
   const catalog = await loadCatalog(catalogFile, storageDir);
+  const origin = new URL(publicOrigin);
+  if (!['http:', 'https:'].includes(origin.protocol) || origin.href !== `${origin.origin}/`) {
+    throw new Error('HOVERSEER_PUBLIC_URL must be an HTTP(S) origin without a path');
+  }
   const app = Fastify({ logger, bodyLimit: 1024 * 1024 });
-  const auth = authenticate(token);
-  const workflows = client.workflow;
-  const temporal = operation => client.connection.withDeadline(Date.now() + 5000, operation);
+  const check = accessCheck(token);
+  const auth = fastifyAuth(check);
+  const runs = createRuns(client);
   app.removeContentTypeParser('text/plain');
 
   await app.register(swagger, {
@@ -69,6 +56,10 @@ export async function buildServer({ client, storageDir, catalogFile, token, logg
       openapi: '3.1.0',
       info: { title: 'Hoverseer workflow API', version: '1.0.0' },
       components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } } },
+    },
+    transformObject({ openapiObject }) {
+      Object.assign(openapiObject.paths, a2aOpenApiPaths);
+      return openapiObject;
     },
     transform({ schema, url, route }) {
       // Publish Zigflow's JSON Schema without compiling a second validator or changing input.
@@ -132,34 +123,11 @@ export async function buildServer({ client, storageDir, catalogFile, token, logg
       if (request.body === undefined) {
         return reply.code(400).send({ message: 'A JSON request body is required' });
       }
-      const idempotencyKey = request.headers['idempotency-key'];
-      const key = idempotencyKey ?? randomUUID();
-      const workflowId = `hoverseer-${hash(JSON.stringify([workflow.name, key])).slice(0, 48)}`;
-      const requestHash = hash(stringify(request.body));
       try {
-        const run = await temporal(() => workflows.start(workflow.type, {
-          args: [request.body],
-          taskQueue: workflow.taskQueue,
-          workflowId,
-          workflowIdReusePolicy: 'REJECT_DUPLICATE',
-          memo: { hoverseerWorkflow: workflow.name, hoverseerRequestHash: requestHash },
-        }));
-        return startResponse(reply, workflowId, run.firstExecutionRunId);
+        const result = await runs.start(workflow, request.body, request.headers['idempotency-key']);
+        return reply.header('Location', result.statusUrl).code(202).send(result);
       } catch (cause) {
-        if (idempotencyKey && cause instanceof WorkflowExecutionAlreadyStartedError) {
-          try {
-            const run = await temporal(() => workflows.getHandle(workflowId).describe());
-            if (run.memo?.hoverseerWorkflow !== workflow.name || run.memo?.hoverseerRequestHash !== requestHash) {
-              return reply.code(409).send({ message: 'The idempotency key was used with different input' });
-            }
-            return startResponse(reply, workflowId, run.runId);
-          } catch (lookupError) {
-            request.log.error({ err: lookupError }, 'Could not resolve the existing Temporal run');
-          }
-        } else {
-          request.log.error({ err: cause }, 'Could not start a Temporal run');
-        }
-        return reply.code(503).send({ message: 'The workflow service is unavailable' });
+        return sendRunError(request, reply, cause);
       }
     });
   }
@@ -173,32 +141,20 @@ export async function buildServer({ client, storageDir, catalogFile, token, logg
       params: {
         type: 'object',
         required: ['workflowId'],
-        properties: { workflowId: { type: 'string', pattern: idPattern } },
+        properties: { workflowId: { type: 'string', pattern: workflowIdPattern } },
       },
       response: { 200: execution, 400: error, 401: error, 404: error, 503: error },
     },
   }, async (request, reply) => {
-    const { workflowId } = request.params;
     try {
-      const handle = workflows.getHandle(workflowId);
-      const run = await temporal(() => handle.describe());
-      const workflow = run.memo?.hoverseerWorkflow;
-      if (typeof workflow !== 'string') {
-        return reply.code(404).send({ message: 'Run not found' });
-      }
-      const response = { workflowId, runId: run.runId, workflow, status: run.status.name };
-      if (run.status.name === 'COMPLETED') {
-        response.result = await temporal(() => workflows.getHandle(workflowId, run.runId).result({ followRuns: false }));
-      }
-      return response;
+      return await runs.get(request.params.workflowId);
     } catch (cause) {
-      if (cause instanceof WorkflowNotFoundError) {
-        return reply.code(404).send({ message: 'Run not found' });
-      }
-      request.log.error({ err: cause }, 'Could not read a Temporal run');
-      return reply.code(503).send({ message: 'The workflow service is unavailable' });
+      return sendRunError(request, reply, cause);
     }
   });
+
+  installMcp(app, { catalog, runs, auth, hostname: origin.hostname });
+  await installA2a(app, { catalog, runs, check, origin: origin.origin });
 
   return app;
 }
