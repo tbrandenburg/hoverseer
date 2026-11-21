@@ -109,22 +109,6 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       HITLY_PROJECT_ID: ${HITLY_PROJECT_ID:-}
       HITLY_API_KEY: ${HITLY_API_KEY:-}
-  cruncher-shell:
-    image: hoverseer-cruncher:local
-    pull_policy: never
-    command: [node, main.mjs, shell]
-    depends_on:
-      temporal:
-        condition: service_healthy
-    restart: on-failure
-    init: true
-    read_only: true
-    tmpfs:
-      - /tmp:mode=1777
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
   approval-gateway:
     image: hoverseer-gateway:local
     build:
