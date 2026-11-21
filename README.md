@@ -4,6 +4,47 @@ Hoverseer runs workflows with human approval. Author workflows in Zigflow Studio
 
 The sample workflow automatically approves up to **$100.00**. Larger amounts create an inbox item and wait up to five minutes for a reviewer. HITLy sends a Temporal signal with the decision. Zigflow returns `approved` or `rejected`. A missed deadline fails the execution with a timeout.
 
+## Architecture
+
+| Container | Type | Purpose |
+| --- | --- | --- |
+| `api` | API server | Exposes managed workflows through REST, MCP, A2A, and OpenAPI on `8081`. |
+| `studio` | Authoring server | Edits the shared Zigflow YAML on `3000`. |
+| `temporal` | Orchestration server | Persists workflow history, timers, and signals. Serves Temporal clients on `7233` and Temporal Web on `8233`. |
+| `hotl` | Review server | Runs the HITLy inbox on `3001` and sends reviewer decisions to Temporal. |
+| `postgres` | Database server | Stores HITLy inbox and project data. |
+| `zigflow` | Workflow runner | Loads the YAML and polls the workflow task queues. Handles control flow and approval waits. |
+| `cruncher` | Activity runner | Polls `hoverseer-activities` and runs named activities. `requestApproval` calls HITLy using Cruncher's credentials. |
+| `approval-gateway` | Compatibility server | Accepts approval requests from older saved workflows that still use HTTP. |
+
+Docker Compose runs these as eight long-running containers during migration. In Kubernetes, the API, Studio, and Zigflow share the `workflow` pod and YAML volume. Cruncher, Temporal, HITLy, Postgres, and the compatibility gateway each have their own deployment. The core stack has seven containers once the gateway is retired.
+
+```mermaid
+flowchart TD
+    Callers["Apps and agents"] -->|"REST, MCP, A2A"| API
+    Authors["Workflow authors"] --> Studio
+    Reviewers["Human reviewers"] --> HOTL
+
+    subgraph Workflows["Workflow services"]
+        Studio["Zigflow Studio"]
+        YAML[("Shared workflow YAML")]
+        API["Hoverseer API"]
+        Zigflow["Zigflow workflow runner"]
+        Studio -->|"Save definitions"| YAML
+        YAML -->|"Read schemas and workflow types"| API
+        YAML -->|"Load workflow definitions"| Zigflow
+    end
+
+    API -->|"Start runs and read results"| Temporal["Temporal Server and history"]
+    Zigflow -->|"Poll workflow queues and schedule activities"| Temporal
+    Cruncher["Cruncher activity runner"] -->|"Poll hoverseer-activities"| Temporal
+    Cruncher -->|"Create approval request"| HOTL["HITLy inbox · hotl"]
+    HOTL -->|"Send hitly.decision signal"| Temporal
+    HOTL -->|"Store review data"| Postgres[("HITLy Postgres")]
+    Zigflow -.->|"Older HTTP workflows"| Gateway["Compatibility approval gateway"]
+    Gateway -.-> HOTL
+```
+
 ## Choose a deployment
 
 Both deployments run Zigflow for workflow orchestration and `cruncher` for Temporal activities. Zigflow loads every project saved as `workflows/<project>/workflow.yaml` in the shared volume. Cruncher polls `hoverseer-activities` and registers `requestApproval`. It calls the HITLy service at `hotl:3001` using its own credentials. Both runners connect to the same Temporal namespace.
