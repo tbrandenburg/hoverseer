@@ -9,7 +9,7 @@ Start with [`request-approval/`](request-approval/) or [`shell/`](shell/). Each 
 | `activity.test.mjs` | Test the activity's behavior. |
 | `example.yaml` | Copy this Zigflow task into a workflow's `do` list. |
 
-1. Register the handler in [`index.mjs`](index.mjs) and make it available to the appropriate queue in [`cruncher/main.mjs`](../cruncher/main.mjs). Cruncher polls `hoverseer-activities` for approval and `hoverseer-shell` for shell in the same process. Keep the deployed names, queues, and argument contracts compatible with saved workflows.
+1. Register the handler in [`index.mjs`](index.mjs) and set `taskQueue` in the manifest to `hoverseer-activities`, the queue polled by [Cruncher](../cruncher/main.mjs). Keep the deployed names, queues, and argument contracts compatible with saved workflows.
 2. Rebuild Studio and Cruncher. Studio reads the manifests at build time and offers the presets inside a workflow body. It saves `call: activity` with one object argument. Zigflow reads the saved YAML and schedules the activity. Cruncher runs it on the queue named by the manifest.
 3. Run `npm ci` and `npm test` in [`cruncher/`](../cruncher/). Open Studio, add the node, save the workflow, and run it. Compare the saved task with `example.yaml`.
 

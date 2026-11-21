@@ -17,7 +17,7 @@ Adding a workflow, worker step, or Studio feature? Start with the [contribution 
 | `hotl` | Review server | Runs the HITLy inbox on `3001` and sends reviewer decisions to Temporal. |
 | `postgres` | Database server | Stores HITLy inbox and project data. |
 | `zigflow` | Workflow runner | Loads the YAML and polls the workflow task queues. Handles control flow and approval waits. |
-| `cruncher` | Activity runner | Runs HITLy approval and shell steps. Polls `hoverseer-activities` for approvals and `hoverseer-shell` for scripts. |
+| `cruncher` | Activity runner | Runs HITLy approval and shell steps. Polls the shared `hoverseer-activities` queue. |
 | `approval-gateway` | Compatibility server | Accepts approval requests from older saved workflows that still use HTTP. |
 
 Docker Compose runs nine long-running containers during migration and eight after the compatibility gateway is retired. On Kubernetes, API, Studio and Zigflow share the `workflow` pod and YAML volume. The dashboard, Cruncher, Temporal, HITLy, Postgres and compatibility gateway each have their own deployment. Infisical runs separately if enabled.
@@ -45,7 +45,7 @@ flowchart TD
 
     API -->|"Start runs and read results"| Temporal["Temporal Server and history"]
     Zigflow -->|"Poll workflow queues and schedule activities"| Temporal
-    Cruncher["Cruncher activity runner"] -->|"Poll approval and shell queues"| Temporal
+    Cruncher["Cruncher activity runner"] -->|"Poll hoverseer-activities"| Temporal
     Cruncher -->|"Create approval request"| HOTL["HITLy inbox · hotl"]
     HOTL -->|"Send hitly.decision signal"| Temporal
     HOTL -->|"Store review data"| Postgres[("HITLy Postgres")]
@@ -69,7 +69,7 @@ The root `compose.yaml`, `kustomization.yaml` and `./hoverseer` are deployment e
 
 ## Choose a deployment
 
-Both deployments run Zigflow for workflow orchestration and `cruncher` for Temporal activities. Zigflow loads every project saved as `workflows/<project>/workflow.yaml` in the shared volume. One Cruncher process polls both activity queues. It registers `requestApproval` on `hoverseer-activities` and `runShell` on `hoverseer-shell`. It calls the HITLy service at `hotl:3001` using its own credentials. Both runners connect to the same Temporal namespace.
+Both deployments run Zigflow for workflow orchestration and `cruncher` for Temporal activities. Zigflow loads every project saved as `workflows/<project>/workflow.yaml` in the shared volume. Cruncher registers `requestApproval` and `runShell` on `hoverseer-activities`. It calls the HITLy service at `hotl:3001` using its own credentials. Both runners connect to the same Temporal namespace.
 
 Prerequisites are Bash, OpenSSL, Docker with Compose v2.24 or later for the Docker path, or a Kubernetes cluster with a default storage class and `kubectl` for the Kubernetes path. The example below uses kind and Docker to build the two upstream app images. First builds download the pinned upstream source and dependencies.
 
@@ -278,14 +278,14 @@ Add a `listen` task in the main workflow for `hitly.decision`. The workflow owns
 
 ### Run a multiline shell step
 
-Cruncher runs `runShell` on the `hoverseer-shell` queue in the same container as the other worker nodes. Use a YAML literal block (`|`) to write multiple commands, like a GitHub Actions `run` block.
+Cruncher runs `runShell` on the shared `hoverseer-activities` queue. Use a YAML literal block (`|`) to write multiple commands, like a GitHub Actions `run` block.
 
 ```yaml
 - runShell:
     call: activity
     with:
       name: runShell
-      taskQueue: hoverseer-shell
+      taskQueue: hoverseer-activities
       arguments:
         - shell: sh
           timeoutSeconds: 10
@@ -313,7 +313,7 @@ Start with the [node guide](nodes/README.md). Open a workflow body in Studio to 
 
 ### Upgrade existing deployments
 
-- After upgrading Cruncher, stop the old `cruncher-shell` service if you deployed it. For the default Compose project, run `docker stop hoverseer-cruncher-shell-1`. On Kubernetes, roll out the rebuilt `cruncher` image first, then run `kubectl -n hoverseer scale deployment/cruncher-shell --replicas=0`. Saved workflows can keep using the shell queue.
+- If you deployed the separate shell worker, update the saved shell tasks to use `hoverseer-activities` and reload the workflows. Remove the old container with `docker stop hoverseer-cruncher-shell-1 && docker rm hoverseer-cruncher-shell-1` for the default Compose project, or remove the old Deployment with `kubectl -n hoverseer delete deployment cruncher-shell --ignore-not-found`.
 - For Docker, stop or bring down the previous Compose stack before starting the renamed `hotl` service so both containers do not claim port `3001`. Keep the existing volumes. The database name, credentials, and HITLy volume are reused. On Kubernetes, the existing HITLy Deployment is updated in place and exposed by the new `hotl` Service.
 - Seeding preserves workflow files already on the shared volume. The compatibility gateway stays available for those definitions. After their active runs finish, update their review steps to the example above and reload Zigflow. Keep the gateway running while any definitions still use its HTTP endpoint.
 

@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import { stat } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Context } from '../../cruncher/activity-runtime.mjs';
-import { runShell } from './activity.mjs';
+import { createActivities, taskQueue } from '../index.mjs';
+import shell from './node.json' with { type: 'json' };
+
+const { runShell } = createActivities({});
 
 test('passes workflow data literally and cleans up the working directory', async t => {
+  assert.equal(shell.taskQueue, taskQueue);
   const controller = new AbortController();
   t.mock.method(Context, 'current', () => ({ cancellationSignal: controller.signal }));
   const message = 'Literal $(printf expanded) and "$HOME"';

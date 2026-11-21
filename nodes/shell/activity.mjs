@@ -18,7 +18,7 @@ export async function runShell(input) {
   }
 
   const { cancellationSignal } = Context.current();
-  const workspace = await mkdtemp(join(tmpdir(), 'hoverseer-shell-'));
+  const workspace = await mkdtemp(join(tmpdir(), 'hoverseer-run-'));
   try {
     const output = await new Promise((resolve, reject) => {
       cancellationSignal.throwIfAborted();
