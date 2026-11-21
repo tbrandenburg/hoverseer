@@ -46,7 +46,7 @@ test('MCP and A2A clients use the same managed runs and discovery catalog', asyn
   const app = await buildServer({
     client,
     storageDir: fileURLToPath(new URL('../workflows', import.meta.url)),
-    catalogFile: fileURLToPath(new URL('../deploy/managed-workflows.yaml', import.meta.url)),
+    catalogFile: fileURLToPath(new URL('../workflows/catalog.yaml', import.meta.url)),
     token: 'test-token',
     publicOrigin: 'https://workflows.example.com',
   });

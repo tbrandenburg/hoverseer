@@ -51,6 +51,19 @@ flowchart TD
     Gateway -.-> HOTL
 ```
 
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `api/` | REST, MCP and A2A workflow endpoints |
+| `cruncher/` | Activity worker and reusable steps |
+| `gateway/` | Compatibility gateway for older approval workflows |
+| `integrations/` | Integration clients shared by services |
+| `workflows/` | Bundled workflows and their public catalog |
+| `deploy/` | Dockerfiles, Kubernetes manifests, dashboard settings and workflow seeding |
+
+The root `compose.yaml`, `kustomization.yaml` and `./hoverseer` are deployment entry points. Kustomize resolves the workflow files and shared source from the repository root.
+
 ## Choose a deployment
 
 Both deployments run Zigflow for workflow orchestration and `cruncher` for Temporal activities. Zigflow loads every project saved as `workflows/<project>/workflow.yaml` in the shared volume. Cruncher polls `hoverseer-activities` and registers `requestApproval`. It calls the HITLy service at `hotl:3001` using its own credentials. Both runners connect to the same Temporal namespace.
@@ -80,7 +93,7 @@ kind load docker-image hoverseer-studio:local hoverseer-hitly:local hoverseer-ap
 ./hoverseer kubernetes forward
 ```
 
-Keep port forwarding running in a separate terminal. Check startup with `kubectl -n hoverseer get pods,pvc`. On another Kubernetes cluster, publish the four images to a registry the cluster can pull from, set the corresponding image names in a Kustomize overlay or in `k8s/stack.yaml`, and run `./hoverseer kubernetes up` using that context. Use only one deployment on the same set of local ports at a time.
+Keep port forwarding running in a separate terminal. Check startup with `kubectl -n hoverseer get pods,pvc`. On another Kubernetes cluster, publish the four images to a registry the cluster can pull from, set the corresponding image names in a Kustomize overlay or in `deploy/kubernetes/stack.yaml`, and run `./hoverseer kubernetes up` using that context. Use only one deployment on the same set of local ports at a time.
 
 ### Open the apps
 
@@ -160,9 +173,9 @@ For Kubernetes, use `./hoverseer kubernetes start` with the same arguments.
 
 ## Manage workflows for HTTP callers
 
-The [managed workflow catalog](deploy/managed-workflows.yaml) maps each public name to a Studio project directory. Both bundled projects are listed. Add another entry after creating or importing its project. Zigflow still loads the saved YAML from the shared volume. The API reads the target workflow type, task queue and input schema from that same file. Projects outside the catalog remain available through Studio and the CLI.
+The [managed workflow catalog](workflows/catalog.yaml) maps each public name to a Studio project directory. Both bundled projects are listed. Add another entry after creating or importing its project. Zigflow still loads the saved YAML from the shared volume. The API reads the target workflow type, task queue and input schema from that same file. Projects outside the catalog remain available through Studio and the CLI.
 
-Run `./hoverseer docker reload` after changing a catalog entry or a saved workflow. On Kubernetes, use `./hoverseer kubernetes up` after changing the catalog and `./hoverseer kubernetes reload` after changing a saved workflow. If upgrading from an older checkout, run `./hoverseer init` and bring up the stack to add the API and its token while retaining your existing credentials.
+Run `./hoverseer docker reload` after changing a catalog entry or a saved workflow. After upgrading from a checkout that stored the catalog in `deploy/`, run `./hoverseer docker up` once to recreate the API container with the new mount. On Kubernetes, use `./hoverseer kubernetes up` after changing the catalog and `./hoverseer kubernetes reload` after changing a saved workflow. If upgrading from an older checkout, run `./hoverseer init` and bring up the stack to add the API and its token while retaining your existing credentials.
 
 ### Discover and call a workflow
 

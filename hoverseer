@@ -147,10 +147,10 @@ case "$backend:$action" in
     docker compose stop
     ;;
   kubernetes:build)
-    docker build -f images/studio.Dockerfile -t hoverseer-studio:local .
-    docker build -f images/hitly.Dockerfile -t hoverseer-hitly:local .
-    docker build -f images/api.Dockerfile -t hoverseer-api:local .
-    docker build -f images/cruncher.Dockerfile -t hoverseer-cruncher:local .
+    docker build -f deploy/images/studio.Dockerfile -t hoverseer-studio:local .
+    docker build -f deploy/images/hitly.Dockerfile -t hoverseer-hitly:local .
+    docker build -f deploy/images/api.Dockerfile -t hoverseer-api:local .
+    docker build -f deploy/images/cruncher.Dockerfile -t hoverseer-cruncher:local .
     ;;
   kubernetes:up)
     require_env

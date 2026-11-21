@@ -2,8 +2,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: hoverseer
 resources:
-  - k8s/stack.yaml
-  - k8s/dashboard.yaml
+  - deploy/kubernetes/stack.yaml
+  - deploy/kubernetes/dashboard.yaml
 configMapGenerator:
   - name: workflow-seed
     files:
@@ -12,7 +12,7 @@ configMapGenerator:
       - article-review.yaml=workflows/article-review/workflow.yaml
   - name: managed-workflows
     files:
-      - deploy/managed-workflows.yaml
+      - managed-workflows.yaml=workflows/catalog.yaml
   - name: gateway-source
     files:
       - gateway/server.mjs

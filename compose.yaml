@@ -43,7 +43,7 @@ services:
     image: hoverseer-studio:local
     build:
       context: .
-      dockerfile: images/studio.Dockerfile
+      dockerfile: deploy/images/studio.Dockerfile
     depends_on:
       workflow-seed:
         condition: service_completed_successfully
@@ -81,7 +81,7 @@ services:
     image: hoverseer-hitly:local
     build:
       context: .
-      dockerfile: images/hitly.Dockerfile
+      dockerfile: deploy/images/hitly.Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,7 +97,7 @@ services:
     image: hoverseer-cruncher:local
     build:
       context: .
-      dockerfile: images/cruncher.Dockerfile
+      dockerfile: deploy/images/cruncher.Dockerfile
     depends_on:
       temporal:
         condition: service_healthy
@@ -113,7 +113,7 @@ services:
     image: hoverseer-gateway:local
     build:
       context: .
-      dockerfile: images/gateway.Dockerfile
+      dockerfile: deploy/images/gateway.Dockerfile
     environment:
       HITLY_PROJECT_ID: ${HITLY_PROJECT_ID:-}
       HITLY_API_KEY: ${HITLY_API_KEY:-}
@@ -121,9 +121,10 @@ services:
     image: hoverseer-api:local
     build:
       context: .
-      dockerfile: images/api.Dockerfile
+      dockerfile: deploy/images/api.Dockerfile
     environment:
       TEMPORAL_ADDRESS: temporal:7233
+      HOVERSEER_CATALOG: /catalog/catalog.yaml
       HOVERSEER_API_TOKEN: ${HOVERSEER_API_TOKEN:-}
       HOVERSEER_PUBLIC_URL: ${HOVERSEER_PUBLIC_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}}
     depends_on:
@@ -133,7 +134,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - workflow-data:/workflows:ro
-      - ./deploy:/config:ro
+      - ./workflows:/catalog:ro
     ports:
       - "127.0.0.1:${HOVERSEER_API_PORT:-8081}:8081"
 volumes:

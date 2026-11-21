@@ -8,7 +8,7 @@ import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import { buildServer } from './server.mjs';
 
 const storageDir = fileURLToPath(new URL('../workflows', import.meta.url));
-const defaultCatalog = fileURLToPath(new URL('../deploy/managed-workflows.yaml', import.meta.url));
+const defaultCatalog = fileURLToPath(new URL('../workflows/catalog.yaml', import.meta.url));
 const auth = { authorization: 'Bearer test-token' };
 const refundRoute = '/v1/workflows/refund-review/runs';
 
