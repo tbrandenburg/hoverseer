@@ -8,6 +8,7 @@ The sample workflow automatically approves up to **$100.00**. Larger amounts cre
 
 | Container | Type | Purpose |
 | --- | --- | --- |
+| `dashboard` | Management dashboard | Homepage launchpad for Studio, HITLy, Temporal Web, OpenAPI and Infisical on `8082`. |
 | `api` | API server | Exposes managed workflows through REST, MCP, A2A, and OpenAPI on `8081`. |
 | `studio` | Authoring server | Edits the shared Zigflow YAML on `3000`. |
 | `temporal` | Orchestration server | Persists workflow history, timers, and signals. Serves Temporal clients on `7233` and Temporal Web on `8233`. |
@@ -17,13 +18,18 @@ The sample workflow automatically approves up to **$100.00**. Larger amounts cre
 | `cruncher` | Activity runner | Polls `hoverseer-activities` and runs named activities. `requestApproval` calls HITLy using Cruncher's credentials. |
 | `approval-gateway` | Compatibility server | Accepts approval requests from older saved workflows that still use HTTP. |
 
-Docker Compose runs these as eight long-running containers during migration. In Kubernetes, the API, Studio, and Zigflow share the `workflow` pod and YAML volume. Cruncher, Temporal, HITLy, Postgres, and the compatibility gateway each have their own deployment. The core stack has seven containers once the gateway is retired.
+Docker Compose runs nine long-running containers during migration and eight after the compatibility gateway is retired. On Kubernetes, API, Studio and Zigflow share the `workflow` pod and YAML volume. The dashboard, Cruncher, Temporal, HITLy, Postgres and compatibility gateway each have their own deployment. Infisical runs separately if enabled.
 
 ```mermaid
 flowchart TD
     Callers["Apps and agents"] -->|"REST, MCP, A2A"| API
-    Authors["Workflow authors"] --> Studio
-    Reviewers["Human reviewers"] --> HOTL
+    People["Authors, reviewers and admins"] --> Dashboard["Hoverseer dashboard"]
+    Dashboard -.-> Studio
+    Dashboard -.-> HOTL
+    Dashboard -.-> API
+    Dashboard -.-> Temporal
+    Dashboard -.-> Infisical["Infisical admin"]
+    Cruncher -->|"Read credentials at startup when enabled"| Infisical
 
     subgraph Workflows["Workflow services"]
         Studio["Zigflow Studio"]
@@ -49,7 +55,7 @@ flowchart TD
 
 Both deployments run Zigflow for workflow orchestration and `cruncher` for Temporal activities. Zigflow loads every project saved as `workflows/<project>/workflow.yaml` in the shared volume. Cruncher polls `hoverseer-activities` and registers `requestApproval`. It calls the HITLy service at `hotl:3001` using its own credentials. Both runners connect to the same Temporal namespace.
 
-Prerequisites are Bash, OpenSSL, Docker with Compose for the Docker path, or a Kubernetes cluster with a default storage class and `kubectl` for the Kubernetes path. The example below uses kind and Docker to build the two upstream app images. First builds download the pinned upstream source and dependencies.
+Prerequisites are Bash, OpenSSL, Docker with Compose v2.24 or later for the Docker path, or a Kubernetes cluster with a default storage class and `kubectl` for the Kubernetes path. The example below uses kind and Docker to build the two upstream app images. First builds download the pinned upstream source and dependencies.
 
 ### Docker Compose
 
@@ -78,19 +84,50 @@ Keep port forwarding running in a separate terminal. Check startup with `kubectl
 
 ### Open the apps
 
+Start at **[Hoverseer on localhost:8082](http://localhost:8082)**. Homepage groups the management tools and shows HTTP reachability for the local services. Each tool handles its own access. The dashboard is local by default and requires no access to Docker, the Kubernetes API or Infisical credentials.
+
 | App | Local URL | Use |
 | --- | --- | --- |
+| Hoverseer dashboard | [localhost:8082](http://localhost:8082) | Open management tools |
 | Zigflow Studio | [localhost:3000](http://localhost:3000) | Create or edit workflow projects |
 | HITLy (`hotl`) | [localhost:3001](http://localhost:3001) | Review requests and record decisions |
 | Temporal Web | [localhost:8233](http://localhost:8233) | Inspect workflow status, event history and results |
-| Workflow API | [localhost:8081/openapi.json](http://localhost:8081/openapi.json) | Discover and call managed workflow routes |
+| Workflow API | [localhost:8081/openapi.json](http://localhost:8081/openapi.json) | Discover managed workflow routes |
+| Infisical | [localhost:8084](http://localhost:8084) or configured URL | Manage credentials on a separate Infisical instance |
+
+For Docker, configure the dashboard port and allowed hosts via `HOVERSEER_DASHBOARD_PORT` and `HOVERSEER_DASHBOARD_HOSTS`. Set `HOVERSEER_STUDIO_URL`, `HOVERSEER_HOTL_URL`, `HOVERSEER_TEMPORAL_WEB_URL`, `HOVERSEER_API_DOCS_URL` and `HOVERSEER_INFISICAL_UI_URL` as needed for browser-reachable links. For Kubernetes, patch the corresponding `HOMEPAGE_ALLOWED_HOSTS` and `HOMEPAGE_VAR_*` settings in the dashboard Deployment. Configure [Homepage authentication](https://gethomepage.dev/installation/#security-authentication) or an authenticated reverse proxy before publishing the dashboard.
 
 ## Connect the inbox
 
 1. Create a local HITLy account and a project using the **Temporal** plugin.
 2. In the project's configuration, use `temporal:7233` for **Temporal address** and **Workflow address**, and `default` for **Temporal namespace**. Use `refund-review` if the interface asks for the task queue. No Temporal API key is needed for this local server.
-3. Create a project API key. Put the project ID and API key in `.env` as `HITLY_PROJECT_ID` and `HITLY_API_KEY`. Keep the generated database and authentication secrets in that file.
+3. Create a project API key. Place the project ID and API key in Infisical as described below or use `HITLY_PROJECT_ID` and `HITLY_API_KEY` in `.env`. Keep the generated database and authentication settings in `.env`.
 4. Run `./hoverseer docker configure` or `./hoverseer kubernetes configure`. This reloads the HITLy credentials in Cruncher and the compatibility gateway. If HITLy offers a project SLA setting, set it close to the five-minute workflow wait. The Temporal deadline and HITLy inbox expiry are separate.
+
+### Use Infisical for Cruncher
+
+1. Use an existing Infisical instance or deploy one with the official [Compose setup](https://infisical.com/docs/self-hosting/deployment-options/docker-compose) or [Helm chart](https://infisical.com/docs/self-hosting/deployment-options/kubernetes-helm). Set the dashboard's Infisical link to the URL admins use in their browsers.
+2. In Infisical, create a project, an environment such as `prod`, and a folder such as `/cruncher`. Save `HITLY_PROJECT_ID` and `HITLY_API_KEY` there. Give a [Universal Auth machine identity](https://infisical.com/docs/documentation/platform/identities/universal-auth) permission to read secrets in that environment and folder.
+3. Create `cruncher/.env.infisical` with permissions `0600` for Docker. The file is ignored by Git. For Kubernetes, use the same keys in the `hoverseer-infisical` Secret. The SDK URL must be reachable from Cruncher. Use HTTPS for a remote instance.
+
+   ```dotenv
+   INFISICAL_SITE_URL=https://infisical.example.com
+   INFISICAL_PROJECT_ID=<infisical-project-id>
+   INFISICAL_CLIENT_ID=<machine-identity-client-id>
+   INFISICAL_CLIENT_SECRET=<machine-identity-client-secret>
+   INFISICAL_ENVIRONMENT=prod
+   INFISICAL_SECRET_PATH=/cruncher
+   ```
+
+   With the Kubernetes namespace already created, you can apply the file as follows.
+
+   ```bash
+   kubectl -n hoverseer create secret generic hoverseer-infisical \
+     --from-env-file=cruncher/.env.infisical --dry-run=client -o yaml |
+     kubectl apply --server-side -f -
+   ```
+
+4. Run `docker compose up -d --no-deps --force-recreate cruncher` or `kubectl -n hoverseer rollout restart deployment/cruncher` to pick up the settings and after changing either HITLy secret. Cruncher reads both keys before it starts polling Temporal. Authentication or lookup failures stop worker startup. The compatibility gateway still uses `.env` for any legacy workflows that call it.
 
 ## Run a workflow
 

@@ -1,5 +1,9 @@
 import { NativeConnection, Worker } from '@temporalio/worker';
-import * as activities from './activities.mjs';
+import { createActivities } from './activities.mjs';
+import { loadHitlyCredentials } from './infisical.mjs';
+import { createHitlyClient } from '../gateway/hitly.mjs';
+
+const activities = createActivities(createHitlyClient(await loadHitlyCredentials()));
 
 const connection = await NativeConnection.connect({
   address: process.env.TEMPORAL_ADDRESS ?? 'temporal:7233',

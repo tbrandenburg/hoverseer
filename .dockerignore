@@ -14,3 +14,4 @@
 !cruncher/activities.mjs
 !cruncher/package.json
 !cruncher/package-lock.json
+!cruncher/infisical.mjs

@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: hoverseer
 resources:
   - k8s/stack.yaml
+  - k8s/dashboard.yaml
 configMapGenerator:
   - name: workflow-seed
     files:
@@ -17,3 +18,9 @@ configMapGenerator:
       - gateway/server.mjs
       - gateway/hitly.mjs
       - gateway/openapi.json
+  - name: dashboard-config
+    files:
+      - deploy/dashboard/settings.yaml
+      - deploy/dashboard/services.yaml
+      - deploy/dashboard/widgets.yaml
+      - deploy/dashboard/bookmarks.yaml

@@ -1,0 +1,13 @@
+title: Hoverseer
+theme: dark
+color: slate
+headerStyle: clean
+statusStyle: dot
+hideVersion: true
+layout:
+  Author and review:
+    style: row
+    columns: 2
+  Operate:
+    style: row
+    columns: 3

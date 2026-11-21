@@ -265,6 +265,24 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - {name: TEMPORAL_ADDRESS, value: "temporal:7233"}
+            - name: INFISICAL_SITE_URL
+              valueFrom:
+                secretKeyRef: {name: hoverseer-infisical, key: INFISICAL_SITE_URL, optional: true}
+            - name: INFISICAL_PROJECT_ID
+              valueFrom:
+                secretKeyRef: {name: hoverseer-infisical, key: INFISICAL_PROJECT_ID, optional: true}
+            - name: INFISICAL_CLIENT_ID
+              valueFrom:
+                secretKeyRef: {name: hoverseer-infisical, key: INFISICAL_CLIENT_ID, optional: true}
+            - name: INFISICAL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: {name: hoverseer-infisical, key: INFISICAL_CLIENT_SECRET, optional: true}
+            - name: INFISICAL_ENVIRONMENT
+              valueFrom:
+                secretKeyRef: {name: hoverseer-infisical, key: INFISICAL_ENVIRONMENT, optional: true}
+            - name: INFISICAL_SECRET_PATH
+              valueFrom:
+                secretKeyRef: {name: hoverseer-infisical, key: INFISICAL_SECRET_PATH, optional: true}
             - name: HITLY_PROJECT_ID
               valueFrom:
                 secretKeyRef: {name: hoverseer-config, key: HITLY_PROJECT_ID}
