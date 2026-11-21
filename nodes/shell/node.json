@@ -2,7 +2,7 @@
   "id": "shell",
   "label": "Run shell",
   "activity": "runShell",
-  "taskQueue": "hoverseer-shell",
+  "taskQueue": "hoverseer-activities",
   "inputSchema": {
     "type": "object",
     "required": [

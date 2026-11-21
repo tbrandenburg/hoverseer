@@ -8,7 +8,7 @@
     call: activity
     with:
       name: runShell
-      taskQueue: hoverseer-shell
+      taskQueue: hoverseer-activities
       arguments:
         - shell: sh
           timeoutSeconds: 60
