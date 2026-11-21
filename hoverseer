@@ -5,10 +5,10 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 usage() {
   cat <<'USAGE'
 Usage
-  ./poc init
-  ./poc docker up|configure|reload|stop
-  ./poc kubernetes build|up|configure|reload|forward
-  ./poc docker|kubernetes start AMOUNT_CENTS [ORDER_ID]
+  ./hoverseer init
+  ./hoverseer docker up|configure|reload|stop
+  ./hoverseer kubernetes build|up|configure|reload|forward
+  ./hoverseer docker|kubernetes start AMOUNT_CENTS [ORDER_ID]
 USAGE
 }
 
@@ -42,20 +42,20 @@ kube() {
 }
 
 configure_kubernetes() {
-  kube create secret generic poc-config --from-env-file=.env --dry-run=client -o yaml |
+  kube create secret generic hoverseer-config --from-env-file=.env --dry-run=client -o yaml |
     kube apply --server-side --field-manager=hoverseer -f -
 }
 
 require_env() {
   if [[ ! -f .env ]]; then
-    printf '%s\n' 'Run ./poc init first.' >&2
+    printf '%s\n' 'Run ./hoverseer init first.' >&2
     exit 2
   fi
 }
 
 start_workflow() {
   local amount=${1:-}
-  local order=${2:-demo-order}
+  local order=${2:-example-order}
   if [[ ! $amount =~ ^[1-9][0-9]{0,8}$ ]] || (( amount > 100000000 )) ||
       [[ ! $order =~ ^[a-zA-Z0-9._-]{1,80}$ ]]; then
     printf '%s\n' 'Use 1–100000000 cents and an order ID containing only letters, numbers, periods, underscores or dashes.' >&2

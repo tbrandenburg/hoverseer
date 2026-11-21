@@ -61,7 +61,7 @@ createServer(async (req, res) => {
         namespace: temporalNamespace,
         actionName: 'Review simulated refund',
         args: { orderId, amountCents },
-        contextMarkdown: 'Review the requested USD refund. This demo moves no money.',
+        contextMarkdown: 'Review the requested USD refund. This request simulates a refund.',
       }),
     });
     if (!approval.ok) {

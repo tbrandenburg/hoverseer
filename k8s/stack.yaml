@@ -151,7 +151,7 @@ spec:
             - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef: {name: poc-config, key: POSTGRES_PASSWORD}
+                secretKeyRef: {name: hoverseer-config, key: POSTGRES_PASSWORD}
           readinessProbe:
             exec:
               command: [pg_isready, -U, hitly, -d, hitly]
@@ -192,10 +192,10 @@ spec:
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef: {name: poc-config, key: POSTGRES_PASSWORD}
+                secretKeyRef: {name: hoverseer-config, key: POSTGRES_PASSWORD}
             - name: BETTER_AUTH_SECRET
               valueFrom:
-                secretKeyRef: {name: poc-config, key: BETTER_AUTH_SECRET}
+                secretKeyRef: {name: hoverseer-config, key: BETTER_AUTH_SECRET}
             - {name: DATABASE_URL, value: "postgres://hitly:$(POSTGRES_PASSWORD)@postgres:5432/hitly"}
             - {name: BETTER_AUTH_URL, value: "http://localhost:3001"}
             - {name: HITLY_REQUIRE_VERIFIED_EMAIL, value: "false"}
@@ -233,10 +233,10 @@ spec:
           env:
             - name: HITLY_PROJECT_ID
               valueFrom:
-                secretKeyRef: {name: poc-config, key: HITLY_PROJECT_ID}
+                secretKeyRef: {name: hoverseer-config, key: HITLY_PROJECT_ID}
             - name: HITLY_API_KEY
               valueFrom:
-                secretKeyRef: {name: poc-config, key: HITLY_API_KEY}
+                secretKeyRef: {name: hoverseer-config, key: HITLY_API_KEY}
           readinessProbe:
             httpGet: {path: /health, port: http}
           securityContext:

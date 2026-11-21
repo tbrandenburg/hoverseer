@@ -10,5 +10,5 @@ RUN curl -fsSL --retry 3 -o /tmp/hitly.tar.gz "https://codeload.github.com/hitly
     && yarn install --frozen-lockfile --non-interactive
 ENV NEXT_TELEMETRY_DISABLED=1
 EXPOSE 3001
-# The upstream dev server is sufficient for a local PoC.
+# Run the upstream development server for local deployments.
 CMD ["bash", "-c", "yarn db:migrate && exec yarn workspace @hitly/app dev --hostname 0.0.0.0"]

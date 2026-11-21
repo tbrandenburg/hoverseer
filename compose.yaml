@@ -52,7 +52,7 @@ services:
     environment:
       POSTGRES_USER: hitly
       POSTGRES_DB: hitly
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./poc init}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./hoverseer init}
     volumes:
       - hitly-data:/var/lib/postgresql/data
     healthcheck:
@@ -71,7 +71,7 @@ services:
     environment:
       DATABASE_URL: postgres://hitly:${POSTGRES_PASSWORD}@postgres:5432/hitly
       BETTER_AUTH_URL: http://localhost:3001
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Run ./poc init}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Run ./hoverseer init}
       HITLY_REQUIRE_VERIFIED_EMAIL: "false"
       HITLY_MAIL_TRANSPORT: log
     ports:
