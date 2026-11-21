@@ -140,6 +140,7 @@ spec:
               - {key: seed-workflows.sh, path: seed-workflows.sh}
               - {key: refund-review.yaml, path: refund-review/workflow.yaml}
               - {key: article-review.yaml, path: article-review/workflow.yaml}
+              - {key: shell-example.yaml, path: shell-example/workflow.yaml}
         - name: managed-workflows
           configMap: {name: managed-workflows}
 ---

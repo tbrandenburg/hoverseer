@@ -1,0 +1,36 @@
+document:
+  dsl: 1.0.0
+  taskQueue: shellExample
+  workflowType: shellExample
+  version: 0.1.0
+  title: Multiline shell
+  summary: Run a shell script and return its standard output.
+input:
+  schema:
+    format: json
+    document:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          maxLength: 200
+do:
+  - runShell:
+      metadata:
+        activityOptions:
+          startToCloseTimeout:
+            seconds: 10
+          retryPolicy:
+            maximumAttempts: 1
+      run:
+        shell:
+          command: /bin/sh
+          arguments:
+            - -c
+            - |
+              set -eu
+              printf '%s\n' 'Running shell step'
+              printf 'Message: %s\n' "$MESSAGE"
+          environment:
+            MESSAGE: '${ $input.message }'

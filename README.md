@@ -173,7 +173,7 @@ For Kubernetes, use `./hoverseer kubernetes start` with the same arguments.
 
 ## Manage workflows for HTTP callers
 
-The [managed workflow catalog](workflows/catalog.yaml) maps each public name to a Studio project directory. Both bundled projects are listed. Add another entry after creating or importing its project. Zigflow still loads the saved YAML from the shared volume. The API reads the target workflow type, task queue and input schema from that same file. Projects outside the catalog remain available through Studio and the CLI.
+The [managed workflow catalog](workflows/catalog.yaml) maps each public name to a Studio project directory. The refund and article approval projects are listed. Add another entry after creating or importing its project. Zigflow still loads the saved YAML from the shared volume. The API reads the target workflow type, task queue and input schema from that same file. Projects outside the catalog remain available through Studio and the CLI.
 
 Run `./hoverseer docker reload` after changing a catalog entry or a saved workflow. After upgrading from a checkout that stored the catalog in `deploy/`, run `./hoverseer docker up` once to recreate the API container with the new mount. On Kubernetes, use `./hoverseer kubernetes up` after changing the catalog and `./hoverseer kubernetes reload` after changing a saved workflow. If upgrading from an older checkout, run `./hoverseer init` and bring up the stack to add the API and its token while retaining your existing credentials.
 
@@ -272,6 +272,34 @@ Use Zigflow’s `call: activity` task to send a request to Cruncher.
 The activity takes a title, optional Markdown context, and an optional JSON object for the review details. It returns an `approvalId`. Cruncher gets the workflow execution identifiers from Temporal and uses the activity ID to send a stable idempotency key on retries. Additional named activities can register with the same worker and queue.
 
 Add a `listen` task in the main workflow for `hitly.decision`. The workflow owns the timeout and the branches for `accept` or `reject`. See the [article workflow](workflows/article-review/workflow.yaml) and the [refund workflow](workflows/refund-review/workflow.yaml) for complete examples.
+
+### Run a multiline shell step
+
+Use a YAML literal block (`|`) to write multiple commands, like a GitHub Actions `run` block. Hoverseer uses Zigflow's built-in [shell task](https://zigflow.dev/docs/dsl/tasks/run/#shell) for this step.
+
+```yaml
+- runShell:
+    run:
+      shell:
+        command: /bin/sh
+        arguments:
+          - -c
+          - |
+            set -eu
+            printf '%s\n' 'Running shell step'
+            printf 'Message: %s\n' "$MESSAGE"
+        environment:
+          MESSAGE: '${ $input.message }'
+```
+
+Configure the executable, arguments and environment in the workflow. Pass caller values through environment variables and quote them in the script so the shell treats them as data. Zigflow runs the command inside its worker container with the worker's permissions and environment. A successful step returns stdout. A nonzero exit fails the activity.
+
+The [bundled shell example](workflows/shell-example/workflow.yaml) sets a ten-second activity timeout and one attempt. Open it in Studio to edit the script. Start it with the CLI and inspect the result in Temporal Web.
+
+```bash
+./hoverseer docker start shellExample '{"message":"Hello from Hoverseer"}'
+./hoverseer kubernetes start shellExample '{"message":"Hello from Hoverseer"}'
+```
 
 ### Add a Cruncher step
 
