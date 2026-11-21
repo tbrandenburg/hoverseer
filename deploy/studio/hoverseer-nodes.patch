@@ -1,0 +1,136 @@
+--- a/src/lib/components/NodePalette.svelte
++++ b/src/lib/components/NodePalette.svelte
+@@ -1,13 +1,17 @@
+ <script lang="ts">
+   import { TASK_KINDS } from '#lib/graph/model.js';
+   import type { TaskKind } from '#lib/graph/model.js';
++  import { workerNodes } from '#lib/hoverseer/nodes.js';
+   import { m } from '#lib/paraglide/messages.js';
+
+   import { DND_TASK_KIND_MIME } from './canvas';
+   import { kindLabel } from './labels';
+
+-  let { onadd, atRoot }: { onadd: (kind: TaskKind) => void; atRoot: boolean } =
+-    $props();
++  let { onadd, onpreset, atRoot }: {
++    onadd: (kind: TaskKind) => void;
++    onpreset: (id: string) => void;
++    atRoot: boolean;
++  } = $props();
+
+   // At the workflow root (empty scope) every entry must itself be a `do`-kind
+   // workflow (DESIGN.md §1.2), so only `do` may be added there. Deeper scopes
+@@ -15,7 +19,7 @@
+   // page's scope-path state (empty path = root) — no separate scope check.
+   const kinds = $derived<readonly TaskKind[]>(atRoot ? ['do'] : TASK_KINDS);
+
+-  function onDragStart(event: DragEvent, kind: TaskKind) {
++  function onDragStart(event: DragEvent, kind: string) {
+     // Carry only the kind. The drop target (the canvas) appends a new node of
+     // this kind to the END of the current scope — it never reads the cursor
+     // position — so array order stays the only ordering (DESIGN.md §3).
+@@ -48,6 +52,21 @@
+         </button>
+       </li>
+     {/each}
++    {#if !atRoot}
++      {#each workerNodes as node (node.id)}
++        <li>
++          <button
++            type="button"
++            class="chip"
++            draggable="true"
++            onclick={() => onpreset(node.id)}
++            ondragstart={(event) => onDragStart(event, `hoverseer:${node.id}`)}
++          >
++            {node.label}
++          </button>
++        </li>
++      {/each}
++    {/if}
+   </ul>
+ </div>
+
+--- a/src/routes/workflows/[name]/[...scope]/+page.svelte
++++ b/src/routes/workflows/[name]/[...scope]/+page.svelte
+@@ -39,6 +39,7 @@
+     siblingNames,
+   } from '#lib/graph/scope.js';
+   import { treeToGraph } from '#lib/graph/treeToGraph.js';
++  import { makeActivityTask, workerNodes } from '#lib/hoverseer/nodes.js';
+   import { m } from '#lib/paraglide/messages.js';
+   import type { Task, TaskList } from '#lib/types/zigflow.js';
+   import { goto } from '$app/navigation';
+@@ -282,17 +283,27 @@
+     clearSaveFeedback();
+   }
+
+-  function addNode(kind: TaskKind) {
++  function addNode(kind: TaskKind, preset?: Task) {
+     const list = currentList();
+     if (!list || !workflow) {
+       return;
+     }
+     const added = addTask(list, kind);
++    if (preset) {
++      updateTaskBody(list, added.id, preset);
++    }
+     ensureTaskIds(workflow);
+     // Select the new node: set the source-of-truth id, mirror its name to the URL.
+     selectedId = added.id;
+     setSelectedParam(added.name);
+     clearSaveFeedback();
++  }
++
++  function addPreset(id: string) {
++    const definition = workerNodes.find((node) => node.id === id);
++    if (scopePath.length && definition) {
++      addNode('call', makeActivityTask(definition));
++    }
+   }
+
+   /**
+@@ -310,6 +321,11 @@
+
+   function onCanvasDrop(event: DragEvent) {
+     const kind = event.dataTransfer?.getData(DND_TASK_KIND_MIME);
++    if (kind?.startsWith('hoverseer:')) {
++      event.preventDefault();
++      addPreset(kind.slice('hoverseer:'.length));
++      return;
++    }
+     if (!kind || !(TASK_KINDS as readonly string[]).includes(kind)) {
+       return;
+     }
+@@ -595,7 +611,7 @@
+     <div class="body">
+       <aside class="sidebar">
+         <section class="palette-section">
+-          <NodePalette onadd={addNode} atRoot={scopePath.length === 0} />
++          <NodePalette onadd={addNode} onpreset={addPreset} atRoot={scopePath.length === 0} />
+         </section>
+
+         <WorkflowDetails
+--- a/src/lib/components/forms/CallForm.svelte
++++ b/src/lib/components/forms/CallForm.svelte
+@@ -1,4 +1,6 @@
+ <script lang="ts">
++  import ActivityNodeForm from '#lib/hoverseer/ActivityNodeForm.svelte';
++  import { nodeForTask } from '#lib/hoverseer/nodes.js';
+   import { m } from '#lib/paraglide/messages.js';
+   import type { CallTask } from '#lib/types/zigflow.js';
+
+@@ -46,11 +48,10 @@
+   </select>
+ </label>
+
+-<!-- HTTP is the only call type with a dedicated form; gRPC/Activity fall back to
+-     the read-only JSON view until their own forms land (§8). This is the single
+-     http-vs-fallback shape guard (moved out of Inspector so it isn't duplicated). -->
+ {#if task.call === 'http'}
+   <CallHttpForm {task} {onchange} />
++{:else if task.call === 'activity' && nodeForTask(task)}
++  <ActivityNodeForm {task} {onchange} />
+ {:else}
+   <JsonFallbackForm {task} />
+ {/if}

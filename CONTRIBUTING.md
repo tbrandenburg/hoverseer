@@ -5,9 +5,9 @@ Choose the row that matches what you want to add. The folder in that row is wher
 | I want to… | Start here | Use |
 | --- | --- | --- |
 | Build or change a workflow | [`workflows/`](workflows/) | Add or edit `<project>/workflow.yaml`. Copy the [article review](workflows/article-review/workflow.yaml) for a Studio-friendly structure. |
-| Add a side-effecting step, such as calling an API, an MCP tool, or an A2A agent | [`cruncher/steps/`](cruncher/steps/) | Add a named Temporal activity. Workflows invoke it with `call: activity`. Follow the [step recipe](cruncher/steps/README.md). |
+| Add a side-effecting step, such as calling an API, an MCP tool, or an A2A agent | [`nodes/`](nodes/) | Add a named Temporal activity. Workflows invoke it with `call: activity`. Follow the [node recipe](nodes/README.md). |
 | Share an integration client across two services | [`integrations/`](integrations/) | Use one folder per integration, as in [`integrations/hitly/`](integrations/hitly/). Keep step-specific code with its activity. |
-| Add a visual preset or improve a task's form | [Studio editor checklist](#studio-editor) | Contribute to Zigflow Studio. A preset inserts YAML for an existing task. |
+| Add a visual preset or improve a task's form | [Studio editor checklist](#studio-editor) | Contribute to Zigflow Studio. Changes to a Hoverseer node’s fields or defaults go in `nodes/<node>/node.json`. |
 | Add a workflow-level primitive to the YAML language | [Zigflow DSL checklist](#zigflow-dsl) | Contribute to Zigflow and its schema. Start with the upstream extension guide. |
 | Change how callers discover or start workflows | [`api/`](api/) and [`workflows/catalog.yaml`](workflows/catalog.yaml) | Use the workflow catalog to list projects exposed through REST, MCP, and A2A. |
 
@@ -15,7 +15,7 @@ For a bundled workflow, add the seed entry to [`kustomization.yaml`](kustomizati
 
 ## Studio editor
 
-Use the [Zigflow Studio repository](https://github.com/zigflow/studio) for UI contributions. Hoverseer picks the Studio revision in [`deploy/images/studio.Dockerfile`](deploy/images/studio.Dockerfile). The paths below refer to Studio.
+Use the [Zigflow Studio repository](https://github.com/zigflow/studio) for UI contributions. Hoverseer picks the Studio revision in [`deploy/images/studio.Dockerfile`](deploy/images/studio.Dockerfile). The paths below refer to Studio. Hoverseer’s [shared node adapter](deploy/studio/) uses those editor entry points against that pinned revision.
 
 | Change | Folder or file |
 | --- | --- |

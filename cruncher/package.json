@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node main.mjs",
-    "test": "node --test"
+    "test": "node --test '*.test.mjs' '../nodes/**/*.test.mjs'"
   },
   "dependencies": {
     "@infisical/sdk": "5.3.1",

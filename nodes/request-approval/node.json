@@ -1,15 +1,19 @@
 {
   "id": "request-approval",
-  "activity": "requestApproval",
   "label": "Request approval",
+  "activity": "requestApproval",
+  "taskQueue": "hoverseer-activities",
   "inputSchema": {
     "type": "object",
-    "required": ["title"],
+    "required": [
+      "title"
+    ],
     "properties": {
       "title": {
         "type": "string",
         "pattern": "\\S",
-        "maxLength": 160
+        "maxLength": 160,
+        "default": "Review request"
       },
       "context": {
         "type": "string",
@@ -20,5 +24,8 @@
         "description": "JSON details shown with the review request."
       }
     }
-  }
+  },
+  "multiline": [
+    "context"
+  ]
 }

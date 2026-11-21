@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { ApplicationFailure, Context } from '@temporalio/activity';
-import { approvalDetails, HitlyRequestError } from '../../../integrations/hitly/client.mjs';
+import { ApplicationFailure, Context } from '../../cruncher/activity-runtime.mjs';
+import { approvalDetails, HitlyRequestError } from '../../integrations/hitly/client.mjs';
 
 export function createRequestApproval(hitly) {
   return async function requestApproval(input) {

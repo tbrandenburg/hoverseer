@@ -1,5 +1,5 @@
 import { NativeConnection, Worker } from '@temporalio/worker';
-import { createActivities, runShell, shellStep } from './steps/index.mjs';
+import { createActivities, requestApproval, runShell, shellStep } from '../nodes/index.mjs';
 import { loadHitlyCredentials } from './infisical.mjs';
 import { createHitlyClient } from '../integrations/hitly/client.mjs';
 
@@ -15,7 +15,7 @@ try {
   const worker = await Worker.create({
     connection,
     namespace: process.env.TEMPORAL_NAMESPACE ?? 'default',
-    taskQueue: isShellWorker ? 'hoverseer-shell' : 'hoverseer-activities',
+    taskQueue: isShellWorker ? shellStep.taskQueue : requestApproval.taskQueue,
     ...(isShellWorker && { maxConcurrentActivityTaskExecutions: 1 }),
     activities,
   });

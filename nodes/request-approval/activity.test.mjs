@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Context } from '@temporalio/activity';
-import { createHitlyClient, HitlyRequestError } from '../../../integrations/hitly/client.mjs';
+import { Context } from '../../cruncher/activity-runtime.mjs';
+import { createHitlyClient, HitlyRequestError } from '../../integrations/hitly/client.mjs';
 import { createActivities } from '../index.mjs';
 
 test('approval requests take generic review details and preserve retry identity', async t => {

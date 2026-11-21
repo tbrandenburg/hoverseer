@@ -1,0 +1,16 @@
+- runShell:
+    metadata:
+      activityOptions:
+        startToCloseTimeout:
+          seconds: 305
+        retryPolicy:
+          maximumAttempts: 1
+    call: activity
+    with:
+      name: runShell
+      taskQueue: hoverseer-shell
+      arguments:
+        - shell: sh
+          timeoutSeconds: 60
+          script: |
+            printf '%s\n' 'Hello from Hoverseer'

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ApplicationFailure, Context } from '@temporalio/activity';
+import { ApplicationFailure, Context } from '../../cruncher/activity-runtime.mjs';
 
 const outputLimit = 64 * 1024;
 
