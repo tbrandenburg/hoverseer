@@ -4,7 +4,8 @@ import { buildServer } from './server.mjs';
 const connection = Connection.lazy({
   address: process.env.TEMPORAL_ADDRESS ?? 'temporal:7233',
 });
-const client = new Client({ connection, namespace: process.env.TEMPORAL_NAMESPACE ?? 'default' });
+const namespace = process.env.TEMPORAL_NAMESPACE ?? 'default';
+const client = new Client({ connection, namespace });
 const port = Number(process.env.PORT ?? 8081);
 const app = await buildServer({
   client,
@@ -12,6 +13,11 @@ const app = await buildServer({
   catalogFile: process.env.HOVERSEER_CATALOG ?? '/config/managed-workflows.yaml',
   token: process.env.HOVERSEER_API_TOKEN,
   logger: true,
+  ui: {
+    namespace,
+    studioUrl: process.env.HOVERSEER_STUDIO_URL || undefined,
+    temporalUrl: process.env.HOVERSEER_TEMPORAL_WEB_URL || undefined,
+  },
   publicOrigin: process.env.HOVERSEER_PUBLIC_URL || `http://localhost:${port}`,
 });
 app.addHook('onClose', () => connection.close());

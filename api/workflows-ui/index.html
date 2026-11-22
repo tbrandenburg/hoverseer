@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflows · Hoverseer</title>
+  <link rel="stylesheet" href="/workflows/style.css">
+  <script type="module" src="/workflows/app.mjs"></script>
+</head>
+<body data-studio="" data-temporal="" data-namespace="">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <p class="brand">Hoverseer</p>
+      <nav aria-label="Workspace links">
+        <a id="studio-link">Studio</a>
+        <a id="temporal-link">Temporal</a>
+        <a href="/openapi.json">OpenAPI</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <h1>Workflows</h1>
+    <p class="lede">Select a managed workflow, supply its inputs, and follow its run.</p>
+    <div class="workspace">
+      <aside class="catalog" aria-label="Managed workflows">
+        <h2>Managed workflows</h2>
+        <p id="catalog-status" role="status">Loading workflows…</p>
+        <ul id="catalog"></ul>
+      </aside>
+      <section id="details" class="details" aria-labelledby="workflow-title" hidden>
+        <div class="details-header">
+          <div>
+            <h2 id="workflow-title"></h2>
+            <p id="summary"></p>
+          </div>
+          <a class="secondary" id="edit-link">Edit in Studio</a>
+        </div>
+        <p class="revision">Catalog revision <code id="revision"></code></p>
+        <form id="run-form">
+          <fieldset>
+            <legend>Workflow input</legend>
+            <div id="fields" class="fields"></div>
+            <label id="raw-mode-label" class="toggle" hidden><input id="raw-mode" type="checkbox"> Edit as JSON</label>
+            <label id="raw-input-label" hidden>
+              JSON input
+              <textarea id="raw-input" rows="6" spellcheck="false"></textarea>
+            </label>
+          </fieldset>
+          <div class="run-controls">
+            <label>
+              Workflow API token
+              <input id="token" type="password" autocomplete="off" required>
+            </label>
+            <button id="start" type="submit">Run workflow</button>
+          </div>
+          <p id="request-status" role="status"></p>
+        </form>
+      </section>
+    </div>
+    <section id="run" class="details run" aria-labelledby="run-title" hidden>
+      <div class="details-header">
+        <div>
+          <h2 id="run-title"></h2>
+          <p id="run-status" role="status"></p>
+        </div>
+        <a class="secondary" id="run-link">Open in Temporal</a>
+      </div>
+      <pre id="run-result" hidden></pre>
+    </section>
+  </main>
+</body>
+</html>

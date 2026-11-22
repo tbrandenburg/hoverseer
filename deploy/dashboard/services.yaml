@@ -10,6 +10,11 @@
         siteMonitor: http://hotl:3001/api/v1/health
         description: Review requests in HITLy
 - Operate:
+    - Workflows:
+        icon: mdi-play-box-outline
+        href: "{{HOMEPAGE_VAR_WORKFLOWS_URL}}"
+        siteMonitor: http://api:8081/workflows
+        description: Start managed workflows and view results
     - Temporal Web:
         icon: mdi-timeline-clock-outline
         href: "{{HOMEPAGE_VAR_TEMPORAL_URL}}"

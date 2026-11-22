@@ -20,6 +20,7 @@ spec:
             - {name: HOMEPAGE_VAR_STUDIO_URL, value: "http://localhost:3000"}
             - {name: HOMEPAGE_VAR_HOTL_URL, value: "http://localhost:3001"}
             - {name: HOMEPAGE_VAR_TEMPORAL_URL, value: "http://localhost:8233"}
+            - {name: HOMEPAGE_VAR_WORKFLOWS_URL, value: "http://localhost:8081/workflows"}
             - {name: HOMEPAGE_VAR_API_DOCS_URL, value: "http://localhost:8081/openapi.json"}
             - {name: HOMEPAGE_VAR_INFISICAL_URL, value: "http://localhost:8084"}
           readinessProbe:

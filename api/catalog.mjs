@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
@@ -16,7 +17,8 @@ export async function loadCatalog(catalogFile, storageDir) {
       throw new Error(`Invalid managed workflow entry: ${name}`);
     }
     const path = join(storageDir, project, 'workflow.yaml');
-    const workflow = parse(await readFile(path, 'utf8'));
+    const source = await readFile(path, 'utf8');
+    const workflow = parse(source);
     const document = workflow?.document;
     if (typeof document?.workflowType !== 'string' || !document.workflowType.trim()
         || typeof document.taskQueue !== 'string' || !document.taskQueue.trim()) {
@@ -26,6 +28,9 @@ export async function loadCatalog(catalogFile, storageDir) {
     const input = workflow.input?.schema;
     return {
       name,
+      project,
+      revision: createHash('sha256').update(source).digest('hex'),
+      version: typeof document.version === 'string' ? document.version : undefined,
       type: document.workflowType,
       taskQueue: document.taskQueue,
       title: typeof document.title === 'string' ? document.title : name,

@@ -7,6 +7,7 @@ services:
       HOMEPAGE_VAR_STUDIO_URL: ${HOVERSEER_STUDIO_URL:-http://localhost:3000}
       HOMEPAGE_VAR_HOTL_URL: ${HOVERSEER_HOTL_URL:-http://localhost:3001}
       HOMEPAGE_VAR_TEMPORAL_URL: ${HOVERSEER_TEMPORAL_WEB_URL:-http://localhost:8233}
+      HOMEPAGE_VAR_WORKFLOWS_URL: ${HOVERSEER_WORKFLOWS_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}/workflows}
       HOMEPAGE_VAR_API_DOCS_URL: ${HOVERSEER_API_DOCS_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}/openapi.json}
       HOMEPAGE_VAR_INFISICAL_URL: ${HOVERSEER_INFISICAL_UI_URL:-http://localhost:8084}
     volumes:
@@ -128,6 +129,8 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       HOVERSEER_CATALOG: /catalog/catalog.yaml
+      HOVERSEER_STUDIO_URL: ${HOVERSEER_STUDIO_URL:-http://localhost:3000}
+      HOVERSEER_TEMPORAL_WEB_URL: ${HOVERSEER_TEMPORAL_WEB_URL:-http://localhost:8233}
       HOVERSEER_API_TOKEN: ${HOVERSEER_API_TOKEN:-}
       HOVERSEER_PUBLIC_URL: ${HOVERSEER_PUBLIC_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}}
     depends_on:
