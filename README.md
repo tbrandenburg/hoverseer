@@ -108,10 +108,11 @@ Start at **[Hoverseer on localhost:8082](http://localhost:8082)**. Homepage grou
 | Zigflow Studio | [localhost:3000](http://localhost:3000) | Create or edit workflow projects |
 | HITLy (`hotl`) | [localhost:3001](http://localhost:3001) | Review requests and record decisions |
 | Temporal Web | [localhost:8233](http://localhost:8233) | Inspect workflow status, event history and results |
+| Workflows | [localhost:8081/workflows](http://localhost:8081/workflows) | Start managed workflows and follow their runs |
 | Workflow API | [localhost:8081/openapi.json](http://localhost:8081/openapi.json) | Discover managed workflow routes |
 | Infisical | [localhost:8084](http://localhost:8084) or configured URL | Manage credentials on a separate Infisical instance |
 
-For Docker, configure the dashboard port and allowed hosts via `HOVERSEER_DASHBOARD_PORT` and `HOVERSEER_DASHBOARD_HOSTS`. Set `HOVERSEER_STUDIO_URL`, `HOVERSEER_HOTL_URL`, `HOVERSEER_TEMPORAL_WEB_URL`, `HOVERSEER_API_DOCS_URL` and `HOVERSEER_INFISICAL_UI_URL` as needed for browser-reachable links. For Kubernetes, patch the corresponding `HOMEPAGE_ALLOWED_HOSTS` and `HOMEPAGE_VAR_*` settings in the dashboard Deployment. Configure [Homepage authentication](https://gethomepage.dev/installation/#security-authentication) or an authenticated reverse proxy before publishing the dashboard.
+For Docker, configure the dashboard port and allowed hosts via `HOVERSEER_DASHBOARD_PORT` and `HOVERSEER_DASHBOARD_HOSTS`. Set `HOVERSEER_STUDIO_URL`, `HOVERSEER_HOTL_URL`, `HOVERSEER_TEMPORAL_WEB_URL`, `HOVERSEER_API_DOCS_URL`, `HOVERSEER_WORKFLOWS_URL` and `HOVERSEER_INFISICAL_UI_URL` as needed for browser-reachable links. For Kubernetes, patch the corresponding `HOMEPAGE_ALLOWED_HOSTS` and `HOMEPAGE_VAR_*` settings in the dashboard Deployment. Configure [Homepage authentication](https://gethomepage.dev/installation/#security-authentication) or an authenticated reverse proxy before publishing the dashboard.
 
 ## Connect the inbox
 
@@ -179,6 +180,12 @@ For Kubernetes, use `./hoverseer kubernetes start` with the same arguments.
 The [managed workflow catalog](workflows/catalog.yaml) maps each public name to a Studio project directory. The refund and article approval projects are listed. Add another entry after creating or importing its project. Zigflow still loads the saved YAML from the shared volume. The API reads the target workflow type, task queue and input schema from that same file. Projects outside the catalog remain available through Studio and the CLI.
 
 Run `./hoverseer docker reload` after changing a catalog entry or a saved workflow. After upgrading from a checkout that stored the catalog in `deploy/`, run `./hoverseer docker up` once to recreate the API container with the new mount. On Kubernetes, use `./hoverseer kubernetes up` after changing the catalog and `./hoverseer kubernetes reload` after changing a saved workflow. If upgrading from an older checkout, run `./hoverseer init` and bring up the stack to add the API and its token while retaining your existing credentials.
+
+### Run from the Workflows page
+
+Open **Workflows** from the dashboard and select a managed workflow. Enter its inputs and the local `HOVERSEER_API_TOKEN` from `.env`. The form uses the workflow’s OpenAPI input schema where possible and accepts raw JSON for complex inputs. The page shows the current run status, completed output, and a link to Temporal Web. The token stays on the page for its session.
+
+The displayed catalog revision identifies the YAML snapshot the API loaded. It does not verify that Zigflow has loaded that same revision. Reload both services after publishing workflow changes. The page’s Studio and Temporal links use `HOVERSEER_STUDIO_URL` and `HOVERSEER_TEMPORAL_WEB_URL`.
 
 ### Discover and call a workflow
 

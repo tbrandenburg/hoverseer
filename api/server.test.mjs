@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import { buildServer } from './server.mjs';
+import { readFields, supportsFields } from './workflows-ui/app.mjs';
 
 const storageDir = fileURLToPath(new URL('../workflows', import.meta.url));
 const defaultCatalog = fileURLToPath(new URL('../workflows/catalog.yaml', import.meta.url));
@@ -87,4 +88,32 @@ test('starts require auth and retries reuse the execution with matching input', 
   const status = (await app.inject({ url: run.statusUrl, headers: auth })).json();
   assert.equal(status.status, 'COMPLETED');
   assert.deepEqual(status.result, { status: 'auto_approved' });
+});
+
+test('the workflow UI serves its own assets and exposes catalog revision metadata', async t => {
+  const { app } = await installApi(t);
+  const page = await app.inject('/workflows');
+  assert.equal(page.statusCode, 200);
+  assert.match(page.headers['content-type'], /^text\/html/);
+  assert.match(page.headers['content-security-policy'], /form-action 'none'/);
+  assert.match(page.body, /data-studio="http:\/\/localhost:3000\/"/);
+  assert.doesNotMatch(page.body, /test-token/);
+  const script = await app.inject('/workflows/app.mjs');
+  assert.match(script.headers['content-type'], /^text\/javascript/);
+  assert.equal((await app.inject('/workflows/style.css')).statusCode, 200);
+  const entries = (await app.inject('/v1/workflows')).json();
+  const refund = entries.find(entry => entry.name === 'refund-review');
+  assert.equal(refund.project, 'refund-review');
+  assert.match(refund.revision, /^[a-f0-9]{64}$/);
+  assert.equal(refund.startUrl, refundRoute);
+});
+
+test('the run form serializes primitive input and falls back for complex schemas', () => {
+  assert.ok(supportsFields({ type: 'object', properties: { amount: { type: 'integer' } } }));
+  assert.ok(!supportsFields({ type: 'object', properties: { filters: { type: 'array' } } }));
+  assert.ok(!supportsFields({ type: 'object', properties: { status: { type: 'string', enum: ['open'] } } }));
+  assert.deepEqual(readFields([
+    ['id', 'string', 'r1'], ['amount', 'integer', '5000'],
+    ['notify', 'boolean', 'false'], ['note', 'string', ''],
+  ]), { id: 'r1', amount: 5000, notify: false });
 });

@@ -7,6 +7,10 @@
 !gateway/openapi.json
 !api/
 !api/*.mjs
+!api/workflows-ui/
+!api/workflows-ui/*.html
+!api/workflows-ui/*.css
+!api/workflows-ui/*.mjs
 !api/package.json
 !api/package-lock.json
 !integrations/

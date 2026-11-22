@@ -136,6 +136,12 @@ spec:
             - name: HOVERSEER_PUBLIC_URL
               valueFrom:
                 secretKeyRef: {name: hoverseer-config, key: HOVERSEER_PUBLIC_URL, optional: true}
+            - name: HOVERSEER_STUDIO_URL
+              valueFrom:
+                secretKeyRef: {name: hoverseer-config, key: HOVERSEER_STUDIO_URL, optional: true}
+            - name: HOVERSEER_TEMPORAL_WEB_URL
+              valueFrom:
+                secretKeyRef: {name: hoverseer-config, key: HOVERSEER_TEMPORAL_WEB_URL, optional: true}
           readinessProbe:
             httpGet: {path: /openapi.json, port: api}
           volumeMounts:

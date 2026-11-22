@@ -3,6 +3,7 @@ import swagger from '@fastify/swagger';
 import { loadCatalog } from './catalog.mjs';
 import { accessCheck, bearerAuth, fastifyAuth } from './auth.mjs';
 import { createRuns, RunError, workflowIdPattern } from './runs.mjs';
+import { installWorkflowsUi } from './workflows-ui.mjs';
 import { installMcp } from './mcp.mjs';
 import { a2aOpenApiPaths, installA2a } from './a2a.mjs';
 
@@ -38,7 +39,7 @@ function sendRunError(request, reply, cause) {
 }
 
 export async function buildServer({
-  client, storageDir, catalogFile, token, logger = false, publicOrigin = 'http://localhost:8081',
+  client, storageDir, catalogFile, token, logger = false, publicOrigin = 'http://localhost:8081', ui,
 }) {
   const catalog = await loadCatalog(catalogFile, storageDir);
   const origin = new URL(publicOrigin);
@@ -85,19 +86,22 @@ export async function buildServer({
           type: 'array',
           items: {
             type: 'object',
-            required: ['name', 'title', 'startUrl'],
+            required: ['name', 'title', 'startUrl', 'project', 'revision'],
             properties: {
               name: { type: 'string' },
               title: { type: 'string' },
               summary: { type: 'string' },
               startUrl: { type: 'string' },
+              project: { type: 'string' },
+              revision: { type: 'string' },
+              version: { type: 'string' },
             },
           },
         },
       },
     },
-  }, async () => catalog.map(({ name, title, summary }) => ({
-    name, title, summary, startUrl: `/v1/workflows/${name}/runs`,
+  }, async () => catalog.map(({ name, title, summary, project, revision, version }) => ({
+    name, title, summary, project, revision, version, startUrl: `/v1/workflows/${name}/runs`,
   })));
 
   for (const workflow of catalog) {
@@ -153,6 +157,7 @@ export async function buildServer({
     }
   });
 
+  installWorkflowsUi(app, ui);
   installMcp(app, { catalog, runs, auth, hostname: origin.hostname });
   await installA2a(app, { catalog, runs, check, origin: origin.origin });
 
