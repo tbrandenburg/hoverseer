@@ -39,6 +39,7 @@ const taskSchema = {
 const errors = {
   400: response('Malformed or unsupported A2A request'),
   401: response('Bearer token required'),
+  403: response('Workspace access denied'),
   404: response('Task not found'),
   409: response('Request conflicts with the task state'),
   500: response('Workflow service unavailable'),
@@ -202,7 +203,7 @@ export async function installA2a(app, { catalog, runs, check, origin }) {
       const { failure, principal } = await check(req.headers);
       if (failure) {
         if (failure.status === 401) res.set('WWW-Authenticate', 'Bearer');
-        const status = failure.status === 401 ? 'UNAUTHENTICATED' : 'UNAVAILABLE';
+        const status = { 401: 'UNAUTHENTICATED', 403: 'PERMISSION_DENIED' }[failure.status] ?? 'UNAVAILABLE';
         res.status(failure.status).type('application/a2a+json')
           .json({ error: { code: failure.status, status, message: failure.message, details: [] } });
         return;

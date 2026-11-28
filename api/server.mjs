@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import swagger from '@fastify/swagger';
 import { loadCatalog } from './catalog.mjs';
 import { accessCheck, bearerAuth, fastifyAuth } from './auth.mjs';
+import { withWorkspace } from './workspace.mjs';
 import { createRuns, RunError, workflowIdPattern } from './runs.mjs';
 import { installWorkflowsUi } from './workflows-ui.mjs';
 import { installMcp } from './mcp.mjs';
@@ -48,7 +49,8 @@ export async function buildServer({
   }
   const app = Fastify({ logger, bodyLimit: 1024 * 1024 });
   app.decorateRequest('principal', null);
-  const check = accessCheck(token, { sessionUrl, origin: origin.origin, hitlyOrigin: ui?.hitlyUrl });
+  const identity = accessCheck(token, { sessionUrl, origin: origin.origin, hitlyOrigin: ui?.hitlyUrl });
+  const check = withWorkspace(identity, { sessionUrl, hitlyOrigin: ui?.hitlyUrl });
   const auth = fastifyAuth(check, { allowCookie: true });
   const bearerOnly = fastifyAuth(check);
   const runs = createRuns(client);
@@ -151,7 +153,7 @@ export async function buildServer({
         required: ['workflowId'],
         properties: { workflowId: { type: 'string', pattern: workflowIdPattern } },
       },
-      response: { 200: execution, 400: error, 401: error, 404: error, 503: error },
+      response: { 200: execution, 400: error, 401: error, 403: error, 404: error, 503: error },
     },
   }, async (request, reply) => {
     try {

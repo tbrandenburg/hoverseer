@@ -57,6 +57,7 @@ function setup() {
   const find = id => document.getElementById(id);
   const { hitly, studio, temporal, namespace } = document.body.dataset;
   find('account-link').href = hitly;
+  find('workspace-switch').href = joinedUrl(hitly, 'inbox');
   find('login-link').href = joinedUrl(hitly, 'login');
   find('studio-link').href = studio;
   find('temporal-link').href = temporal;
@@ -68,6 +69,7 @@ function setup() {
   const start = find('start');
   const requestStatus = find('request-status');
   let selection;
+  let workspaceId;
   let controls = [];
   let pending;
   let activeRun;
@@ -123,7 +125,7 @@ function setup() {
 
   async function poll(run, signal) {
     try {
-      const info = await getJson(run.statusUrl, { signal });
+      const info = await getJson(run.statusUrl, { signal, headers: { 'x-hitly-workspace-id': workspaceId } });
       if (signal.aborted) return;
       find('run-status').textContent = info.status;
       if (Object.hasOwn(info, 'result')) {
@@ -165,6 +167,7 @@ function setup() {
         headers: {
           'content-type': 'application/json',
           'idempotency-key': pending.key,
+          'x-hitly-workspace-id': workspaceId,
         },
         body,
       });
@@ -219,6 +222,10 @@ function setup() {
       const identity = await getJson('/v1/me');
       if (identity.kind !== 'user') throw new Error('Sign in with a HITLy user account.');
       find('identity').textContent = `Signed in as ${identity.name}`;
+      if (!identity.workspace) throw new Error('No authorized workspace.');
+      workspaceId = identity.workspace.id;
+      find('workspace-name').textContent = `${identity.workspace.name} (${identity.workspace.role})`;
+      find('workspace-context').hidden = false;
       find('workspace').hidden = false;
       await loadCatalog();
     } catch (error) {
@@ -227,6 +234,8 @@ function setup() {
     }
   }
 
+  // A return from HITLy via browser history must not display a stale workspace.
+  window.addEventListener('pageshow', event => { if (event.persisted) window.location.reload(); });
   void authenticate();
 }
 
