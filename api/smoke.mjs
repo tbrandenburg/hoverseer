@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { setTimeout as sleep } from 'node:timers/promises';
 import test from 'node:test';
@@ -79,10 +79,10 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   const start = (name, input, key = randomUUID()) => json(api + '/v1/workflows/' + name + '/runs', post(input, {
     ...auth, 'idempotency-key': key,
   }), 202);
-  const status = run => json(api + run.statusUrl, { headers: auth });
-  const complete = async (label, run, expected) => {
+  const status = (run, headers = auth) => json(api + run.statusUrl, { headers });
+  const complete = async (label, run, expected, headers = auth) => {
     const value = await eventually(label, async () => {
-      const current = await status(run);
+      const current = await status(run, headers);
       return current.status === 'RUNNING' ? null : current;
     });
     assert.equal(value.status, 'COMPLETED', label);
@@ -130,9 +130,10 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   assert.equal((await fetch(api + '/v1/me')).status, 401);
   assert.equal((await fetch(api + '/v1/me', { headers: { authorization: 'Bearer invalid-session' } })).status, 401);
   async function register(ctx, name, email) {
+    const password = 'Smoke-' + randomUUID();
     const response = await ctx.request.post(hitly + '/api/auth/sign-up/email', {
       headers: { origin: hitly },
-      data: { name, email, password: 'Smoke-' + randomUUID() },
+      data: { name, email, password },
     });
     assert.ok(response.ok(), 'HITLy signup: HTTP ' + response.status());
     const token = response.headers()['set-auth-token'] ?? (await response.json()).token;
@@ -148,7 +149,7 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
     assert.equal((await bearer.json()).id, identity.id);
     assert.ok(identity.workspace?.id, 'Personal HITLy workspace');
     assert.equal(identity.workspace.role, 'owner');
-    return { identity, headers: { ...headers, 'x-hitly-workspace-id': identity.workspace.id } };
+    return { identity, password, headers: { ...headers, 'x-hitly-workspace-id': identity.workspace.id } };
   }
   const alice = await register(context, 'CI Alice', 'ci-alice@example.com');
   const bobContext = await browser.newContext();
@@ -422,4 +423,137 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
     return entries.some(item => item.name === 'refund-review' && item.title === definition.document.title);
   });
   await complete('refund after Studio save and reload', await start('refund-review', refund), 'auto_approved');
+
+  console.log('Checking optional static workspace execution deployment');
+  // Provision resources only in this disposable test, using the same manual
+  // commands and Compose overlay documented for administrators.
+  const namespaces = {
+    [alice.identity.workspace.id]: 'workspace-a',
+    [bob.identity.workspace.id]: 'workspace-b',
+    [teamId]: 'workspace-team',
+  };
+  for (const namespace of Object.values(namespaces)) {
+    await compose('exec', '-T', 'temporal', 'temporal', 'operator', 'namespace', 'create', '--namespace', namespace);
+    await mkdir('workspace-data/' + namespace, { recursive: true });
+    await cp('workflows', 'workspace-data/' + namespace, { recursive: true });
+  }
+  // Different YAML implementations make a namespace-routing error observable.
+  for (const namespace of Object.values(namespaces)) {
+    const file = 'workspace-data/' + namespace + '/refund-review/workflow.yaml';
+    const source = await readFile(file, 'utf8');
+    assert.ok(source.includes('auto_approved'));
+    await writeFile(file, source.replaceAll('auto_approved', 'approved-' + namespace));
+  }
+  const scopedConfig = await context.request.patch(hitly + '/api/v1/projects/' + projectId + '/config', {
+    headers: { origin: hitly },
+    data: { name: 'Hoverseer smoke', address: 'temporal:7233', baseUrl: 'temporal:7233',
+      namespace: 'workspace-a', taskQueue: 'articleReview', sla: '10' },
+  });
+  assert.ok(scopedConfig.ok(), 'Workspace approval project configuration');
+  const workspaceEnv = {
+    HOVERSEER_WORKSPACE_NAMESPACES: JSON.stringify(namespaces),
+    WORKSPACE_A_HITLY_PROJECT_ID: projectId,
+    WORKSPACE_A_HITLY_API_KEY: apiKey,
+  };
+  await writeFile('.env', (await readFile('.env', 'utf8')) + '\n'
+    + Object.entries(workspaceEnv).map(([name, value]) => name + '=' + value).join('\n') + '\n', { mode: 0o600 });
+  Object.assign(process.env, workspaceEnv);
+  const overlay = ['-f', 'compose.yaml', '-f', 'compose.workspaces.yaml'];
+  await compose(...overlay, 'up', '-d', '--no-deps', 'api',
+    'zigflow-a', 'zigflow-b', 'zigflow-team', 'cruncher-a', 'cruncher-b', 'cruncher-team');
+  await eventually('workspace execution API', async () => {
+    const r = await fetch(api + '/v1/me', { headers: alice.headers });
+    return r.ok && (await r.json()).executionNamespace === 'workspace-a';
+  });
+  const bobLogin = await bobContext.request.post(hitly + '/api/auth/sign-in/email', {
+    headers: { origin: hitly },
+    data: { email: 'ci-bob@example.com', password: bob.password },
+  });
+  assert.ok(bobLogin.ok(), 'Bob signs in again');
+  const bobToken = bobLogin.headers()['set-auth-token'] ?? (await bobLogin.json()).token;
+  assert.ok(bobToken);
+  const bobPrivate = { authorization: 'Bearer ' + bobToken, 'x-hitly-workspace-id': bob.identity.workspace.id };
+  const teamHeaders = inWorkspace(alice, teamId);
+  const mappedStart = (headers, name = 'refund-review', input = refund) =>
+    json(api + '/v1/workflows/' + name + '/runs', post(input, headers), 202);
+  const mappedAlice = await mappedStart(alice.headers);
+  const mappedBob = await mappedStart(bobPrivate);
+  const mappedTeam = await mappedStart(teamHeaders);
+  await complete('Alice namespace', mappedAlice, 'approved-workspace-a', alice.headers);
+  await complete('Bob namespace', mappedBob, 'approved-workspace-b', bobPrivate);
+  await complete('Shared namespace (Alice)', mappedTeam, 'approved-workspace-team', teamHeaders);
+  await complete('Shared namespace (owner)', await mappedStart(team.headers), 'approved-workspace-team', team.headers);
+  assert.equal((await fetch(api + mappedAlice.statusUrl, { headers: bobPrivate })).status, 404);
+  assert.equal((await fetch(api + mappedAlice.statusUrl, { headers: teamHeaders })).status, 404);
+  assert.equal((await fetch(api + mappedAlice.statusUrl, { headers: auth })).status, 404);
+  assert.equal((await fetch(api + mappedTeam.statusUrl, { headers: inWorkspace({ headers: bobPrivate }, teamId) })).status, 403);
+  for (const [namespace, execution] of [['workspace-a', mappedAlice], ['workspace-b', mappedBob], ['workspace-team', mappedTeam]]) {
+    await compose('exec', '-T', 'temporal', 'temporal', 'workflow', 'describe', '--namespace', namespace, '--workflow-id', execution.workflowId);
+    // The same IDs must not exist in the legacy namespace or any other workspace.
+    for (const other of ['default', ...Object.values(namespaces)].filter(n => n !== namespace)) {
+      await assert.rejects(exec('docker', ['compose', 'exec', '-T', 'temporal', 'temporal', 'workflow', 'describe',
+        '--namespace', other, '--workflow-id', execution.workflowId], { timeout: 15_000 }));
+    }
+    const shell = await exec('docker', ['compose', 'exec', '-T', 'temporal', 'temporal', 'workflow', 'execute',
+      '--namespace', namespace, '--type', 'shellExample', '--task-queue', 'shellExample',
+      '--workflow-id', 'scoped-shell-' + randomUUID(), '--input', JSON.stringify({ message: 'shell-' + namespace })],
+    { timeout: 120_000, maxBuffer: 1024 * 1024 });
+    assert.match(shell.stdout, new RegExp('shell-' + namespace));
+  }
+  const scopedApproval = await mappedStart(alice.headers, 'article-review', { headline: 'Scoped approval', draft: 'CI workspace review.' });
+  const item = await eventually('workspace approval', async () => {
+    const r = await fetch(hitly + '/api/v1/approvals/by-run-id?plugin=temporal&runId=' + encodeURIComponent(scopedApproval.workflowId), {
+      headers: { authorization: 'Bearer ' + apiKey }, signal: AbortSignal.timeout(15_000),
+    });
+    if (r.status === 404) return null;
+    assert.equal(r.status, 200);
+    return r.json();
+  });
+  const decided = await context.request.post(hitly + '/api/v1/approvals/' + item.id + '/decide', {
+    headers: { origin: hitly }, data: { decision: 'accept' },
+  });
+  assert.ok(decided.ok());
+  assert.ok(!(await decided.json()).resumeError);
+  await complete('workspace approval', scopedApproval, 'ready_to_publish', alice.headers);
+
+  // The actual managed protocol adapters must use the same namespace router.
+  const scopedMcp = new Client({ name: 'workspace-mcp', version: '1.0.0' });
+  await scopedMcp.connect(new StreamableHTTPClientTransport(new URL('/mcp', api), { requestInit: { headers: teamHeaders } }));
+  try {
+    const r = await scopedMcp.callTool({ name: 'start_refund_review', arguments: refund });
+    assert.ok(!r.isError);
+    await complete('workspace MCP', r.structuredContent, 'approved-workspace-team', teamHeaders);
+  } finally {
+    await scopedMcp.close();
+  }
+  const scopedTransport = new RestTransportFactory({
+    fetchImpl(url, init) {
+      const headers = new Headers(init?.headers);
+      for (const [name, value] of Object.entries(bobPrivate)) headers.set(name, value);
+      return fetch(url, { ...init, headers });
+    },
+  });
+  const scopedA2a = await new ClientFactory({ transports: [scopedTransport] }).createFromAgentCard(AgentCard.fromJSON(card));
+  const scopedTask = await scopedA2a.sendMessage({
+    message: { messageId: randomUUID(), role: Role.ROLE_USER,
+      parts: [{ content: { $case: 'data', value: { workflow: 'refund-review', input: refund } } }] },
+    configuration: { returnImmediately: true },
+  });
+  await complete('workspace A2A', { statusUrl: '/v1/runs/' + scopedTask.id }, 'approved-workspace-b', bobPrivate);
+  const unconfiguredContext = await browser.newContext();
+  t.after(() => unconfiguredContext.close());
+  const unconfigured = await register(unconfiguredContext, 'CI Unconfigured', 'ci-unconfigured@example.com');
+  assert.equal((await (await fetch(api + '/v1/me', { headers: unconfigured.headers })).json()).executionNamespace, null);
+  assert.equal((await fetch(api + '/v1/workflows/refund-review/runs', post(refund, unconfigured.headers))).status, 403);
+  await page.goto(api + '/workflows', { waitUntil: 'domcontentloaded' });
+  await page.locator('#execution-context').filter({ hasText: 'workspace-a' }).waitFor();
+  await page.getByRole('button', { name: 'Refund review smoke edit', exact: true }).click();
+  await page.locator('#fields input').nth(0).fill('scoped-browser');
+  await page.locator('#fields input').nth(1).fill('5000');
+  await page.locator('#start').click();
+  await page.locator('#run-status').filter({ hasText: 'COMPLETED' }).waitFor({ timeout: 120_000 });
+  assert.match(await page.locator('#run-result').innerText(), /approved-workspace-a/);
+  assert.match(await page.locator('#run-link').getAttribute('href'), /\/namespaces\/workspace-a\//);
+  assert.equal(await page.locator('#edit-link').isVisible(), false);
+  await page.screenshot({ path: artifacts + '/screenshots/workspace-execution.png', fullPage: true });
 });

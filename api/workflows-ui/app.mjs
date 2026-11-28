@@ -70,6 +70,7 @@ function setup() {
   const requestStatus = find('request-status');
   let selection;
   let workspaceId;
+  let executionNamespace = namespace;
   let controls = [];
   let pending;
   let activeRun;
@@ -175,7 +176,7 @@ function setup() {
       requestStatus.textContent = 'Workflow started.';
       find('run-title').textContent = workflow.title;
       find('run-status').textContent = 'Checking run status…';
-      const path = [namespace, run.workflowId, run.runId].map(encodeURIComponent);
+      const path = [executionNamespace, run.workflowId, run.runId].map(encodeURIComponent);
       find('run-link').href = joinedUrl(temporal, `namespaces/${path[0]}/workflows/${path[1]}/${path[2]}/history`);
       find('run-result').hidden = true;
       find('run').hidden = false;
@@ -226,6 +227,19 @@ function setup() {
       workspaceId = identity.workspace.id;
       find('workspace-name').textContent = `${identity.workspace.name} (${identity.workspace.role})`;
       find('workspace-context').hidden = false;
+      if (identity.executionNamespace === null) {
+        find('execution-context').textContent = 'Execution is not configured for this workspace.';
+        return;
+      }
+      executionNamespace = identity.executionNamespace ?? namespace;
+      find('execution-context').textContent = identity.workspaceExecution
+        ? `Execution namespace: ${executionNamespace}. Shared workflow catalog; edit via administrator.`
+        : 'Workflow resources are still shared.';
+      if (identity.workspaceExecution) {
+        // Studio still points at the legacy volume; never imply it edits the selected workspace.
+        find('studio-link').hidden = true;
+        find('edit-link').hidden = true;
+      }
       find('workspace').hidden = false;
       await loadCatalog();
     } catch (error) {
