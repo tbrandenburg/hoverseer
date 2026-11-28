@@ -4,13 +4,13 @@ Start the bundled workflows from the Workflows page or the command line, and fol
 
 ## Run from the Workflows page
 
-Sign in to HITLy in your browser, then open **Workflows** from the dashboard using the same hostname. Select a managed workflow and enter its inputs. The form uses the workflow’s OpenAPI input schema where possible and accepts raw JSON for complex inputs. The page shows the current run status, completed output, and a link to Temporal Web. It uses your existing HITLy session rather than asking for the service token.
+Sign in to HITLy in your browser, then open **Workflows** from the dashboard using the same hostname. Select a managed workflow and enter its inputs. The form uses the workflow’s OpenAPI input schema where possible and accepts raw JSON for complex inputs. The page shows the current run status, run ID and completed output. In single-environment mode it also links to Temporal Web; in workspace mode raw Temporal is reserved for host administrators. It uses your existing HITLy session rather than asking for the service token.
 
-The displayed catalog revision identifies the YAML snapshot the API loaded. It does not verify that Zigflow has loaded that same revision. Reload both services after publishing workflow changes. The page’s Studio and Temporal links use `HOVERSEER_STUDIO_URL` and `HOVERSEER_TEMPORAL_WEB_URL`.
+The displayed catalog revision identifies the YAML snapshot the API loaded. It does not verify that Zigflow has loaded that same revision. Reload both services after publishing workflow changes. In workspace mode the page prominently displays your active HITLy workspace and uses the configured workspace Studio origin. Switch using HITLy and return to Workflows. Team workflows are shared for authoring, but each run is readable only by its initiating user. A saved Studio draft is not deployed; finish active executions and have an administrator run `./hoverseer docker reload workspace-a` to validate and reload. The single-environment Studio and Temporal links use `HOVERSEER_STUDIO_URL` and `HOVERSEER_TEMPORAL_WEB_URL`.
 
 ## Run a workflow from the command line
 
-Use the workflow type as the first argument and pass its input as JSON. The task queue defaults to the workflow type. If `document.taskQueue` is different, specify it with `--task-queue`.
+The deployment CLI is a host-administrator tool for the legacy default namespace; it is not an authenticated user workflow client. For workspace runs use Workflows or the [authenticated API](API.md). Use the workflow type as the first argument and pass its input as JSON. The task queue defaults to the workflow type. If `document.taskQueue` is different, specify it with `--task-queue`.
 
 ```bash
 ./hoverseer docker start articleReview '{"headline":"Release notes","draft":"What changed this week."}'

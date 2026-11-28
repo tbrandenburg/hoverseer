@@ -31,13 +31,15 @@ export async function provisionInfisical(projects) {
     assert.ok(response.ok, 'Infisical ' + method + ' ' + path + ' HTTP ' + response.status);
     return response.json();
   };
+  const email = 'ci-admin@example.com';
+  const password = 'Smoke-' + generated();
   const boot = await call('/api/v1/admin/bootstrap', {
-    email: 'ci-admin@example.com', password: 'Smoke-' + generated(), organization: 'Hoverseer CI',
+    email, password, organization: 'Hoverseer CI',
   });
   const admin = boot.identity.credentials.token;
   assert.ok(admin);
   // Redact the ephemeral bootstrap token from diagnostics as well.
-  await writeFile('.env', (await readFile('.env', 'utf8')) + '\nSMOKE_INFISICAL_ADMIN_TOKEN=' + admin + '\n', { mode: 0o600 });
+  await writeFile('.env', (await readFile('.env', 'utf8')) + '\nSMOKE_INFISICAL_ADMIN_TOKEN=' + admin + '\nSMOKE_INFISICAL_ADMIN_PASSWORD=' + password + '\n', { mode: 0o600 });
   const scopes = {};
   for (const [suffix, credentials] of Object.entries(projects)) {
     const project = (await call('/api/v1/projects', { projectName: 'Hoverseer ' + suffix }, admin)).project;
@@ -98,4 +100,6 @@ export async function provisionInfisical(projects) {
     assert.ok([403, 404].includes(write.status), 'Viewer must not write credentials');
     await write.body?.cancel();
   }
+  return { email, password, organizationId: boot.organization.id,
+    projectIds: Object.fromEntries(Object.entries(scopes).map(([name, value]) => [name, value.projectId])) };
 }

@@ -14,7 +14,7 @@
       <nav aria-label="Workspace links">
         <a id="account-link">HITLy account</a>
         <a id="studio-link" hidden>Studio</a>
-        <a id="temporal-link">Temporal</a>
+        <a id="temporal-link" hidden>Temporal (admin)</a>
         <a href="/openapi.json">OpenAPI</a>
       </nav>
     </div>
@@ -23,7 +23,10 @@
     <h1>Workflows</h1>
     <p class="lede">Select a managed workflow, supply its inputs, and follow its run.</p>
     <p id="identity" class="lede" role="status">Checking your HITLy session…</p>
-    <p id="workspace-context" class="lede" hidden><span id="workspace-name"></span> · <a id="workspace-switch">Switch workspace in HITLy</a> and return here. <span id="execution-context"></span></p>
+    <section id="workspace-context" class="workspace-context" aria-label="Active workspace" hidden>
+      <div><p class="eyebrow">Active workspace</p><p id="workspace-name"></p><p id="execution-context" class="lede"></p></div>
+      <a id="workspace-switch" class="secondary">Switch workspace in HITLy</a>
+    </section>
     <p id="sign-in" class="lede" hidden><a id="login-link">Sign in with HITLy</a>, then return to Workflows.</p>
     <div id="workspace" class="workspace" hidden>
       <aside class="catalog" aria-label="Managed workflows">
@@ -39,7 +42,8 @@
           </div>
           <a class="secondary" id="edit-link">Edit in Studio</a>
         </div>
-        <p class="revision">Catalog revision <code id="revision"></code></p>
+        <p class="revision">Loaded catalog revision <code id="revision"></code></p>
+        <p id="deploy-note" class="lede" hidden>Studio saves workflow definitions. An administrator must validate and reload the worker and API before edits are deployed. Finish active runs before reloading.</p>
         <form id="run-form">
           <fieldset>
             <legend>Workflow input</legend>
@@ -63,8 +67,9 @@
           <h2 id="run-title"></h2>
           <p id="run-status" role="status"></p>
         </div>
-        <a class="secondary" id="run-link">Open in Temporal</a>
+        <a class="secondary" id="run-link" hidden>Open in Temporal (admin)</a>
       </div>
+      <p class="revision">Run ID <code id="run-id"></code></p>
       <pre id="run-result" hidden></pre>
     </section>
   </main>

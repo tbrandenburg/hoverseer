@@ -8,6 +8,7 @@ usage() {
 Usage
   ./hoverseer init
   ./hoverseer docker up|configure|reload|stop
+  ./hoverseer docker configure|reload WORKSPACE_NAMESPACE
   ./hoverseer kubernetes build|up|configure|reload|forward
   ./hoverseer docker|kubernetes start WORKFLOW_TYPE JSON [--task-queue QUEUE]
   ./hoverseer docker|kubernetes import PROJECT WORKFLOW_FILE
@@ -64,12 +65,45 @@ require_env() {
   fi
 }
 
+workspace_mode() {
+  [[ -n ${HOVERSEER_WORKSPACE_NAMESPACES:-} ]] || grep -q '^HOVERSEER_WORKSPACE_NAMESPACES=.' .env
+}
+
+docker_compose() {
+  require_env
+  local files=(-f compose.yaml)
+  if workspace_mode; then
+    files+=(-f compose.workspaces.yaml)
+  fi
+  if grep -q '^INFISICAL_ENCRYPTION_KEY=.' .env; then
+    files+=(-f compose.infisical.yaml)
+  fi
+  docker compose "${files[@]}" "$@"
+}
+
+workspace_suffix() {
+  if ! workspace_mode || [[ ! $1 =~ ^workspace-([a-z0-9][a-z0-9-]*)$ ]]; then
+    printf '%s\n' 'Specify a configured namespace such as workspace-a.' >&2
+    return 2
+  fi
+  printf '%s\n' "${BASH_REMATCH[1]}"
+}
+
+validate_studio() {
+  docker_compose exec -T "$1" sh -ec '
+    for file in /workflows/*/workflow.yaml; do
+      [ -f "$file" ] || continue
+      zigflow validate --disable-telemetry "$file"
+    done
+  '
+}
+
 exec_service() {
   local service=$1
   shift
   if [[ $backend == docker ]]; then
     require_env
-    docker compose exec -T "$service" "$@"
+    docker_compose exec -T "$service" "$@"
   elif [[ $service == studio ]]; then
     kube exec -i deployment/workflow -c studio -- "$@"
   else
@@ -132,19 +166,39 @@ import_workflow() {
 case "$backend:$action" in
   docker:up)
     require_env
-    docker compose up -d --build
+    docker_compose up -d --build
     ;;
   docker:configure)
     require_env
-    docker compose up -d --no-deps cruncher approval-gateway
+    if [[ $# -eq 3 ]]; then
+      suffix=$(workspace_suffix "$3")
+      docker_compose up -d --no-deps --force-recreate "cruncher-$suffix"
+    elif workspace_mode; then
+      printf '%s\n' 'Use ./hoverseer docker configure WORKSPACE_NAMESPACE.' >&2
+      exit 2
+    else
+      docker_compose up -d --no-deps cruncher approval-gateway
+    fi
     ;;
   docker:reload)
     require_env
-    docker compose restart zigflow api
+    if [[ $# -eq 3 ]]; then
+      suffix=$(workspace_suffix "$3")
+      docker_compose exec -T api node main.mjs --check-catalog "$3"
+      validate_studio "studio-$suffix"
+      docker_compose restart "zigflow-$suffix" api
+    elif workspace_mode; then
+      printf '%s\n' 'Use ./hoverseer docker reload WORKSPACE_NAMESPACE.' >&2
+      exit 2
+    else
+      docker_compose exec -T api node main.mjs --check-catalog
+      validate_studio studio
+      docker_compose restart zigflow api
+    fi
     ;;
   docker:stop)
     require_env
-    docker compose stop
+    docker_compose stop
     ;;
   kubernetes:build)
     docker build -f deploy/images/studio.Dockerfile -t hoverseer-studio:local .

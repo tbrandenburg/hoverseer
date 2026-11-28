@@ -13,6 +13,8 @@ COPY deploy/studio/ActivityNodeForm.svelte deploy/studio/nodes.ts ./src/lib/hove
 COPY deploy/studio/hoverseer-nodes.patch /tmp/hoverseer-nodes.patch
 RUN mv src/hooks.server.ts src/hooks.upstream.server.ts
 COPY deploy/studio/workspace-hooks.server.ts ./src/hooks.server.ts
+COPY deploy/studio/workspace-layout.server.ts ./src/routes/+layout.server.ts
+COPY deploy/studio/workspace-layout.svelte ./src/routes/+layout.svelte
 RUN patch --batch --fuzz=0 -p1 < /tmp/hoverseer-nodes.patch \
     && npm run build \
     && npm prune --omit=dev
