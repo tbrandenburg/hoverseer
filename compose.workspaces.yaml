@@ -1,12 +1,48 @@
 # Optional static workspace execution overlay. Copy one worker pair for each
 # additional namespace; no Docker socket, control plane or auto-provisioning.
 services:
+  dashboard:
+    environment:
+      HOMEPAGE_VAR_STUDIO_URL: ${HOVERSEER_WORKFLOWS_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}/workflows}
+  # In workspace mode the old unprotected Studio must not remain published.
+  studio:
+    ports: !reset []
+    environment:
+      HOVERSEER_STUDIO_NAMESPACE: default
   api:
     environment:
       HOVERSEER_WORKSPACE_NAMESPACES: "${HOVERSEER_WORKSPACE_NAMESPACES:?Set the workspace namespace JSON mapping}"
       HOVERSEER_WORKSPACE_ROOT: /workspace-data
+      HOVERSEER_WORKSPACE_STUDIO_URLS: '{"workspace-a":"http://localhost:3002","workspace-b":"http://localhost:3003","workspace-team":"http://localhost:3004"}'
     volumes:
       - ./workspace-data:/workspace-data:ro
+  studio-a: &studio-workspace
+    image: hoverseer-studio:local
+    environment:
+      HOVERSEER_STUDIO_NAMESPACE: workspace-a
+      ORIGIN: http://localhost:3002
+    volumes:
+      - ./workspace-data/workspace-a:/workflows
+    ports:
+      - "127.0.0.1:3002:3000"
+  studio-b:
+    <<: *studio-workspace
+    environment:
+      HOVERSEER_STUDIO_NAMESPACE: workspace-b
+      ORIGIN: http://localhost:3003
+    volumes:
+      - ./workspace-data/workspace-b:/workflows
+    ports:
+      - "127.0.0.1:3003:3000"
+  studio-team:
+    <<: *studio-workspace
+    environment:
+      HOVERSEER_STUDIO_NAMESPACE: workspace-team
+      ORIGIN: http://localhost:3004
+    volumes:
+      - ./workspace-data/workspace-team:/workflows
+    ports:
+      - "127.0.0.1:3004:3000"
   zigflow-a: &zigflow-workspace
     image: ghcr.io/zigflow/zigflow:0.18.1
     command: [run, --disable-telemetry, --dir, /workflows, --glob, "*/workflow.yaml"]

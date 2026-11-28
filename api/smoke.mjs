@@ -459,7 +459,9 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
     + Object.entries(workspaceEnv).map(([name, value]) => name + '=' + value).join('\n') + '\n', { mode: 0o600 });
   Object.assign(process.env, workspaceEnv);
   const overlay = ['-f', 'compose.yaml', '-f', 'compose.workspaces.yaml'];
-  await compose(...overlay, 'up', '-d', '--no-deps', 'api',
+  await exec('sudo', ['chown', '-R', '1000:1000', 'workspace-data']);
+  await compose(...overlay, 'up', '-d', '--no-deps', 'api', 'studio', 'dashboard',
+    'studio-a', 'studio-b', 'studio-team',
     'zigflow-a', 'zigflow-b', 'zigflow-team', 'cruncher-a', 'cruncher-b', 'cruncher-team');
   await eventually('workspace execution API', async () => {
     const r = await fetch(api + '/v1/me', { headers: alice.headers });
@@ -547,13 +549,97 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   assert.equal((await fetch(api + '/v1/workflows/refund-review/runs', post(refund, unconfigured.headers))).status, 403);
   await page.goto(api + '/workflows', { waitUntil: 'domcontentloaded' });
   await page.locator('#execution-context').filter({ hasText: 'workspace-a' }).waitFor();
-  await page.getByRole('button', { name: 'Refund review smoke edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Refund review', exact: true }).click();
   await page.locator('#fields input').nth(0).fill('scoped-browser');
   await page.locator('#fields input').nth(1).fill('5000');
   await page.locator('#start').click();
   await page.locator('#run-status').filter({ hasText: 'COMPLETED' }).waitFor({ timeout: 120_000 });
   assert.match(await page.locator('#run-result').innerText(), /approved-workspace-a/);
   assert.match(await page.locator('#run-link').getAttribute('href'), /\/namespaces\/workspace-a\//);
-  assert.equal(await page.locator('#edit-link').isVisible(), false);
+  assert.equal(await page.locator('#edit-link').isVisible(), true);
+  assert.equal(await page.locator('#edit-link').getAttribute('href'), 'http://localhost:3002/workflows/refund-review');
   await page.screenshot({ path: artifacts + '/screenshots/workspace-execution.png', fullPage: true });
+
+  console.log('Checking protected workspace Studio authoring');
+  const studioA = 'http://localhost:3002';
+  const studioB = 'http://localhost:3003';
+  const studioTeam = 'http://localhost:3004';
+  const definitionPath = '/api/workflows/refund-review';
+  for (const url of [studioA, studioB, studioTeam]) {
+    await eventually('protected Studio ' + url, async () => {
+      const r = await fetch(url + definitionPath);
+      return r.status === 401;
+    });
+    assert.equal((await fetch(url + '/workflows/refund-review')).status, 401);
+  }
+  assert.equal((await context.request.get(studioA + definitionPath)).status(), 200);
+  assert.equal((await context.request.get(studioB + definitionPath)).status(), 403);
+  assert.equal((await bobContext.request.get(studioA + definitionPath)).status(), 403);
+  assert.equal((await bobContext.request.get(studioA + '/workflows/refund-review')).status(), 403);
+  assert.equal((await bobContext.request.get(studioB + definitionPath)).status(), 200);
+  assert.equal((await context.request.get(studioTeam + definitionPath)).status(), 200);
+  assert.equal((await teamContext.request.get(studioTeam + definitionPath)).status(), 200);
+  assert.equal((await bobContext.request.get(studioTeam + definitionPath)).status(), 403);
+  assert.equal((await unconfiguredContext.request.get(studioA + definitionPath)).status(), 403);
+  assert.equal((await fetch(api + '/v1/studio-access/workspace-a', { headers: auth })).status, 401);
+  const oldStudio = await fetch(studio + definitionPath, { signal: AbortSignal.timeout(3000) }).catch(() => null);
+  assert.ok(!oldStudio || !oldStudio.ok, 'Legacy Studio must no longer expose workflow data');
+
+  const beforeAlice = await (await context.request.get(studioA + definitionPath)).json();
+  const beforeBob = await (await bobContext.request.get(studioB + definitionPath)).json();
+  const beforeTeam = await (await teamContext.request.get(studioTeam + definitionPath)).json();
+  assert.equal((await bobContext.request.put(studioA + definitionPath, {
+    headers: { origin: studioA }, data: beforeBob,
+  })).status(), 403);
+  assert.equal((await bobContext.request.delete(studioA + definitionPath, {
+    headers: { origin: studioA },
+  })).status(), 403);
+  assert.equal((await context.request.put(studioA + definitionPath, {
+    headers: { origin: studioB }, data: beforeAlice,
+  })).status(), 403);
+  assert.equal((await context.request.get(studioB + definitionPath, {
+    headers: { 'x-hitly-workspace-id': alice.identity.workspace.id },
+  })).status(), 403);
+  assert.equal((await context.request.get(studioA + '/api/workflows/%2e%2e%2fworkspace-b')).ok(), false);
+
+  // Real browser editor save, not a simulated Studio API or DOM.
+  await page.locator('#edit-link').click();
+  await page.waitForURL(studioA + '/workflows/refund-review');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('textbox', { name: 'Title', exact: true }).fill('Alice protected edit');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await eventually('Studio browser saved Alice title', async () => {
+    const r = await context.request.get(studioA + definitionPath);
+    return r.ok() && (await r.json()).document.title === 'Alice protected edit';
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.equal(await page.getByRole('textbox', { name: 'Title', exact: true }).inputValue(), 'Alice protected edit');
+  await page.screenshot({ path: artifacts + '/screenshots/protected-studio.png', fullPage: true });
+
+  const aliceEdited = await (await context.request.get(studioA + definitionPath)).json();
+  // Change behavior through the real Studio API and prove the edited YAML is executed.
+  const updated = JSON.parse(JSON.stringify(aliceEdited).replaceAll('approved-workspace-a', 'approved-protected-edit'));
+  assert.notDeepEqual(updated, aliceEdited);
+  const saved = await context.request.put(studioA + definitionPath, {
+    headers: { origin: studioA }, data: updated,
+  });
+  assert.equal(saved.status(), 200);
+  assert.deepEqual((await (await bobContext.request.get(studioB + definitionPath)).json()).document, beforeBob.document);
+  assert.deepEqual((await (await teamContext.request.get(studioTeam + definitionPath)).json()).document, beforeTeam.document);
+  assert.match(await readFile('workspace-data/workspace-a/refund-review/workflow.yaml', 'utf8'), /approved-protected-edit/);
+  assert.doesNotMatch(await readFile('workspace-data/workspace-b/refund-review/workflow.yaml', 'utf8'), /approved-protected-edit/);
+
+  await compose(...overlay, 'restart', 'zigflow-a', 'api');
+  await eventually('workspace catalog reloaded from edited YAML', async () => {
+    const r = await fetch(api + '/v1/workspace/workflows', { headers: alice.headers });
+    return r.ok && (await r.json()).some(item => item.title === 'Alice protected edit');
+  });
+  await complete('protected Studio edited execution', await mappedStart(alice.headers), 'approved-protected-edit', alice.headers);
+  await complete('Bob unaffected by Alice edit', await mappedStart(bobPrivate), 'approved-workspace-b', bobPrivate);
+  await complete('Team unaffected by Alice edit', await mappedStart(teamHeaders), 'approved-workspace-team', teamHeaders);
+  const revokedStudioSession = await bobContext.request.post(hitly + '/api/session/sign-out', {
+    headers: { origin: hitly }, data: {},
+  });
+  assert.equal(revokedStudioSession.status(), 200);
+  assert.equal((await bobContext.request.get(studioB + definitionPath)).status(), 401);
 });

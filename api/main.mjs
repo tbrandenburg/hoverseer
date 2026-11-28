@@ -22,6 +22,7 @@ const app = await buildServer({
   storageDir,
   catalogFile,
   workspaceExecutions,
+  workspaceStudioUrls: JSON.parse(process.env.HOVERSEER_WORKSPACE_STUDIO_URLS || '{}'),
   token: process.env.HOVERSEER_API_TOKEN,
   sessionUrl: process.env.HITLY_URL ?? 'http://hotl:3001',
   logger: true,

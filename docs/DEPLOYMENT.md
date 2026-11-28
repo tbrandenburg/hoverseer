@@ -91,7 +91,7 @@ Open Studio and Temporal Web on localhost through Compose or kubectl port forwar
 
 ## Optional static workspace execution (Docker Compose)
 
-The original single-environment stack still works. For a trusted internal multi-workspace deployment, use the included [Compose overlay](../compose.workspaces.yaml). It provides three example worker pairs (two personal workspaces and a shared team); reuse or copy a pair when needed. It does not create resources dynamically.
+The original single-environment stack still works. For a trusted internal multi-workspace deployment, use the included [Compose overlay](../compose.workspaces.yaml). It provides three example Studio instances and worker pairs (two personal workspaces and a shared team); reuse or copy a group when needed. It does not create resources dynamically.
 
 1. Start the regular stack with `./hoverseer init` and `./hoverseer docker up`. Create users/workspaces and memberships in HITLy. Obtain the actual workspace IDs from the authenticated Hoverseer `GET /v1/me`.
 2. Create the Temporal namespaces and copy the starter workflows into independent directories:
@@ -101,6 +101,7 @@ The original single-environment stack still works. For a trusted internal multi-
      docker compose exec -T temporal temporal operator namespace create --namespace "$namespace"
      mkdir -p "workspace-data/$namespace"
      cp -R workflows/. "workspace-data/$namespace/"
+     sudo chown -R 1000:1000 "workspace-data/$namespace"
    done
    ```
 
@@ -121,4 +122,4 @@ The original single-environment stack still works. For a trusted internal multi-
 
    Restart the matching Zigflow worker and API after changing a workspace's YAML or catalog, once its active executions have finished. Use the same two Compose files for logs, stop and teardown.
 
-The mapping must be explicit; unmapped user workspaces cannot start or read runs in overlay mode. The service token continues to use only the legacy default namespace. The public catalog's aliases and input schemas must match in each workspace; implementations and task queues can differ. Workspace directories and Cruncher volumes are separate, but the stock Studio and Temporal UI are still trusted/admin-only services, and Temporal namespaces alone are not a security sandbox. Edit the workspace files as an administrator for now. No user runs are migrated from the default namespace; finish them before enabling the overlay, and avoid reusing pre-upgrade idempotency keys. Kubernetes continues to use the original single-environment configuration.
+The mapping must be explicit; unmapped user workspaces cannot start or read runs in overlay mode. The service token continues to use only the legacy default namespace. The public catalog's aliases and input schemas must match in each workspace; implementations and task queues can differ. Workspace directories and Cruncher volumes are separate. The overlay publishes protected Studio instances on localhost ports 3002, 3003 and 3004, unpublishes the legacy Studio, and points the shared Homepage's Studio link to Workflows. Sign in to HITLy, switch workspaces there, then use Edit in Studio from Workflows. Each Studio checks live membership for its own fixed namespace on every application request (including its API), requires same-origin writes, and mounts only that workspace's directory. All workspace members can author workflows in this trusted-team MVP. To add a workspace, copy its Studio and worker services and extend the namespace and Studio URL mappings; keep Studio's `ORIGIN` and the advertised URL identical, on the same hostname as HITLy. The administrator still reloads Zigflow and the API after edits, and maintains the shared public workflow contract. Temporal UI remains trusted/admin-only and Temporal namespaces alone are not a security sandbox. No user runs are migrated from the default namespace; finish them before enabling the overlay, and avoid reusing pre-upgrade idempotency keys. Kubernetes continues to use the original single-environment configuration.
