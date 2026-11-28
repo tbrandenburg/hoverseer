@@ -4,7 +4,7 @@ Start the bundled workflows from the Workflows page or the command line, and fol
 
 ## Run from the Workflows page
 
-Open **Workflows** from the dashboard and select a managed workflow. Enter its inputs and the local `HOVERSEER_API_TOKEN` from `.env`. The form uses the workflow’s OpenAPI input schema where possible and accepts raw JSON for complex inputs. The page shows the current run status, completed output, and a link to Temporal Web. The token stays on the page for its session.
+Sign in to HITLy in your browser, then open **Workflows** from the dashboard using the same hostname. Select a managed workflow and enter its inputs. The form uses the workflow’s OpenAPI input schema where possible and accepts raw JSON for complex inputs. The page shows the current run status, completed output, and a link to Temporal Web. It uses your existing HITLy session rather than asking for the service token.
 
 The displayed catalog revision identifies the YAML snapshot the API loaded. It does not verify that Zigflow has loaded that same revision. Reload both services after publishing workflow changes. The page’s Studio and Temporal links use `HOVERSEER_STUDIO_URL` and `HOVERSEER_TEMPORAL_WEB_URL`.
 
