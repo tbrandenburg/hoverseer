@@ -31,17 +31,31 @@ export async function provisionInfisical(projects) {
     assert.ok(response.ok, 'Infisical ' + method + ' ' + path + ' HTTP ' + response.status);
     return response.json();
   };
+  const email = 'ci-admin@example.com';
+  const password = 'Smoke-' + generated();
   const boot = await call('/api/v1/admin/bootstrap', {
-    email: 'ci-admin@example.com', password: 'Smoke-' + generated(), organization: 'Hoverseer CI',
+    email, password, organization: 'Hoverseer CI',
   });
   const admin = boot.identity.credentials.token;
   assert.ok(admin);
   // Redact the ephemeral bootstrap token from diagnostics as well.
-  await writeFile('.env', (await readFile('.env', 'utf8')) + '\nSMOKE_INFISICAL_ADMIN_TOKEN=' + admin + '\n', { mode: 0o600 });
+  await writeFile('.env', (await readFile('.env', 'utf8')) + '\nSMOKE_INFISICAL_ADMIN_TOKEN=' + admin + '\nSMOKE_INFISICAL_ADMIN_PASSWORD=' + password + '\n', { mode: 0o600 });
   const scopes = {};
   for (const [suffix, credentials] of Object.entries(projects)) {
     const project = (await call('/api/v1/projects', { projectName: 'Hoverseer ' + suffix }, admin)).project;
     assert.ok(project.id);
+    // The bootstrap machine identity creates these projects. Explicitly grant
+    // the disposable human administrator access for the native UI review.
+    const membershipResponse = await fetch(base + '/api/v1/projects/' + project.id + '/user/' + boot.user.id + '/membership', {
+      headers: { authorization: 'Bearer ' + admin }, signal: AbortSignal.timeout(15_000),
+    });
+    if (membershipResponse.status === 404) {
+      await membershipResponse.body?.cancel();
+      await call('/api/v1/projects/' + project.id + '/memberships', { emails: [email], roleSlugs: ['admin'] }, admin);
+    } else {
+      assert.equal(membershipResponse.status, 200, 'Infisical administrator project membership lookup');
+      await membershipResponse.body?.cancel();
+    }
     for (const [name, value] of Object.entries({ HITLY_PROJECT_ID: credentials.projectId, HITLY_API_KEY: credentials.apiKey })) {
       await call('/api/v4/secrets/' + name, {
         projectId: project.id, environment: 'prod', secretPath: '/', secretValue: value,
@@ -98,4 +112,6 @@ export async function provisionInfisical(projects) {
     assert.ok([403, 404].includes(write.status), 'Viewer must not write credentials');
     await write.body?.cancel();
   }
+  return { email, password, organizationId: boot.organization.id,
+    projectIds: Object.fromEntries(Object.entries(scopes).map(([name, value]) => [name, value.projectId])) };
 }

@@ -56,3 +56,8 @@ pre { background: #111a26; border-radius: .5rem; margin-bottom: 0; overflow: aut
   .details-header { align-items: start; flex-wrap: wrap; }
   .run-controls { align-items: stretch; flex-direction: column; }
 }
+.workspace-context { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; background: var(--panel); border: 1px solid var(--line); border-radius: .85rem; padding: 1rem 1.2rem; margin-top: 1.2rem; }
+.eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+#workspace-name { font-size: 1.2rem; font-weight: 700; margin-top: .2rem; }
+#deploy-note { font-size: .85rem; margin-bottom: 1rem; }
+#run-id { overflow-wrap: anywhere; }

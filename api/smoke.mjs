@@ -395,8 +395,11 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
       await compose('restart', 'zigflow', 'cruncher');
       assert.equal((await status(run)).status, 'RUNNING');
     }
-    await page.goto(hitly + '/inbox', { waitUntil: 'domcontentloaded' });
+    await page.goto(hitly + '/inbox', { waitUntil: 'networkidle' });
     await page.screenshot({ path: artifacts + '/screenshots/inbox-' + decision + '.png', fullPage: true });
+    await page.goto(hitly + '/inbox/' + approval.id, { waitUntil: 'networkidle' });
+    await page.getByText('Review article draft', { exact: true }).first().waitFor();
+    await page.screenshot({ path: artifacts + '/screenshots/approval-pending-' + decision + '.png', fullPage: true });
     const response = await context.request.post(hitly + '/api/v1/approvals/' + approval.id + '/decide', {
       headers: { origin: hitly },
       data: { decision, ...(decision === 'reject' && { reason: 'CI rejection' }) },
@@ -405,6 +408,16 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
     const body = await response.json();
     assert.ok(!body.resumeError, 'HITLy must actually resume Temporal');
     await complete('approval ' + decision, run, decision === 'accept' ? 'ready_to_publish' : 'changes_requested');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Decision', exact: true }).waitFor();
+    await page.screenshot({ path: artifacts + '/screenshots/approval-decided-' + decision + '.png', fullPage: true });
+    if (decision === 'accept') {
+      const adminPage = await context.newPage();
+      await adminPage.goto('http://localhost:8233/namespaces/default/workflows/' + run.workflowId + '/' + run.runId + '/history', { waitUntil: 'networkidle' });
+      await eventually('Temporal history visible', async () => (await adminPage.locator('body').innerText()).includes(run.workflowId));
+      await adminPage.screenshot({ path: artifacts + '/screenshots/temporal-admin-history.png', fullPage: true });
+      await adminPage.close();
+    }
   }
 
   console.log('Checking real approval acceptance after worker restart');
@@ -461,6 +474,12 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   Object.assign(process.env, workspaceEnv);
   const overlay = ['-f', 'compose.yaml', '-f', 'compose.workspaces.yaml'];
   await exec('sudo', ['chown', '-R', '1000:1000', 'workspace-data']);
+  // Recreate Temporal too, removing its previously published Web port.
+  await compose(...overlay, 'up', '-d', '--no-deps', 'temporal');
+  await eventually('Temporal healthy after port removal', async () => {
+    await compose('exec', '-T', 'temporal', 'temporal', 'operator', 'cluster', 'health');
+    return true;
+  });
   await compose(...overlay, 'up', '-d', '--no-deps', 'api', 'studio', 'dashboard',
     'studio-a', 'studio-b', 'studio-team',
     'zigflow-a', 'zigflow-b', 'zigflow-team', 'cruncher-a', 'cruncher-b', 'cruncher-team');
@@ -468,6 +487,17 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
     const r = await fetch(api + '/v1/me', { headers: alice.headers });
     return r.ok && (await r.json()).executionNamespace === 'workspace-a';
   });
+  // A fresh user-facing dashboard must not link to raw administrative ports.
+  const finalHome = await context.newPage();
+  await eventually('workspace Homepage ready', async () => {
+    await finalHome.goto('http://localhost:8082/', { waitUntil: 'domcontentloaded' });
+    return (await finalHome.locator('body').innerText()).includes('Administration and integration');
+  });
+  assert.equal(await finalHome.locator('a[href*=":8233"]').count(), 0);
+  assert.equal(await finalHome.locator('a[href*=":3000"]').count(), 0);
+  await finalHome.screenshot({ path: artifacts + '/screenshots/homepage-multiuser.png', fullPage: true });
+  await finalHome.close();
+  assert.equal(await fetch('http://localhost:8233/', { signal: AbortSignal.timeout(3000) }).then(() => true).catch(() => false), false);
   const bobLogin = await bobContext.request.post(hitly + '/api/auth/sign-in/email', {
     headers: { origin: hitly },
     data: { email: 'ci-bob@example.com', password: bob.password },
@@ -556,10 +586,19 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   await page.locator('#start').click();
   await page.locator('#run-status').filter({ hasText: 'COMPLETED' }).waitFor({ timeout: 120_000 });
   assert.match(await page.locator('#run-result').innerText(), /approved-workspace-a/);
-  assert.match(await page.locator('#run-link').getAttribute('href'), /\/namespaces\/workspace-a\//);
+  assert.equal(await page.locator('#run-link').isVisible(), false);
+  assert.equal(await page.locator('#temporal-link').isVisible(), false);
+  assert.match(await page.locator('#run-id').innerText(), /^hoverseer-/);
+  assert.match(await page.locator('#deploy-note').innerText(), /administrator must validate and reload/);
   assert.equal(await page.locator('#edit-link').isVisible(), true);
   assert.equal(await page.locator('#edit-link').getAttribute('href'), 'http://localhost:3002/workflows/refund-review');
   await page.screenshot({ path: artifacts + '/screenshots/workspace-execution.png', fullPage: true });
+  const teamWorkflows = await teamContext.newPage();
+  await teamWorkflows.goto(api + '/workflows', { waitUntil: 'domcontentloaded' });
+  await teamWorkflows.locator('#execution-context').filter({ hasText: 'workspace-team' }).waitFor();
+  await teamWorkflows.getByRole('button', { name: 'Refund review', exact: true }).waitFor();
+  await teamWorkflows.screenshot({ path: artifacts + '/screenshots/team-workflows.png', fullPage: true });
+  await teamWorkflows.close();
 
   console.log('Checking protected workspace Studio authoring');
   const studioA = 'http://localhost:3002';
@@ -615,7 +654,14 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   });
   await page.reload({ waitUntil: 'networkidle' });
   assert.equal(await page.getByRole('textbox', { name: 'Title', exact: true }).inputValue(), 'Alice protected edit');
+  await page.getByText('Workspace: workspace-a', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('link', { name: 'Back to Hoverseer' }).getAttribute('href'), api + '/workflows');
   await page.screenshot({ path: artifacts + '/screenshots/protected-studio.png', fullPage: true });
+  const studioNodes = await context.newPage();
+  await studioNodes.goto(studioA + '/workflows/article-review/articleReview', { waitUntil: 'networkidle' });
+  await studioNodes.getByText('requestReview', { exact: true }).first().waitFor();
+  await studioNodes.screenshot({ path: artifacts + '/screenshots/studio-expanded-nodes.png', fullPage: true });
+  await studioNodes.close();
 
   const aliceEdited = await (await context.request.get(studioA + definitionPath)).json();
   // Change behavior through the real Studio API and prove the edited YAML is executed.
@@ -630,7 +676,23 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   assert.match(await readFile('workspace-data/workspace-a/refund-review/workflow.yaml', 'utf8'), /approved-protected-edit/);
   assert.doesNotMatch(await readFile('workspace-data/workspace-b/refund-review/workflow.yaml', 'utf8'), /approved-protected-edit/);
 
-  await compose(...overlay, 'restart', 'zigflow-a', 'api');
+  console.log('Checking safe reload preflight against an incompatible saved workflow');
+  const incompatible = structuredClone(updated);
+  incompatible.input.schema.document.properties.extra = { type: 'string' };
+  const invalidSave = await context.request.put(studioA + definitionPath, {
+    headers: { origin: studioA }, data: incompatible,
+  });
+  assert.equal(invalidSave.status(), 200, 'A draft may be saved but cannot change the managed API contract');
+  const priorCatalog = await json(api + '/v1/workspace/workflows', { headers: alice.headers });
+  await assert.rejects(exec('./hoverseer', ['docker', 'reload', 'workspace-a'], { timeout: 60_000 }),
+    error => /Workspace catalog must match the shared public workflow names and input schemas/.test(error.stderr));
+  assert.deepEqual(await json(api + '/v1/workspace/workflows', { headers: alice.headers }), priorCatalog);
+  await complete('Bob unaffected by rejected deployment', await mappedStart(bobPrivate), 'approved-workspace-b', bobPrivate);
+  const restored = await context.request.put(studioA + definitionPath, {
+    headers: { origin: studioA }, data: updated,
+  });
+  assert.equal(restored.status(), 200);
+  await exec('./hoverseer', ['docker', 'reload', 'workspace-a'], { timeout: 180_000 });
   await eventually('workspace catalog reloaded from edited YAML', async () => {
     const r = await fetch(api + '/v1/workspace/workflows', { headers: alice.headers });
     return r.ok && (await r.json()).some(item => item.title === 'Alice protected edit');
@@ -696,7 +758,7 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   await eventually('Infisical', async () => (await fetch('http://localhost:8084/api/status', {
     signal: AbortSignal.timeout(5000),
   })).ok, 240_000);
-  await provisionInfisical(credentials);
+  const vaultAdmin = await provisionInfisical(credentials);
   // Remove direct approval keys. Success now requires live SDK authentication
   // and a secret read in the actual worker container.
   const clear = Object.fromEntries(['A', 'B', 'TEAM'].flatMap(suffix => [
@@ -738,4 +800,49 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
         'Approval credential must not appear in Temporal history');
     }
   }
+
+  console.log('Capturing the native Infisical project access controls (no secret values)');
+  const vaultBrowser = await browser.newContext();
+  t.after(() => vaultBrowser.close());
+  const vaultPage = await vaultBrowser.newPage();
+  vaultPage.setDefaultTimeout(60_000);
+  await vaultPage.goto('http://localhost:8084/login', { waitUntil: 'domcontentloaded' });
+  await vaultPage.locator('input[name="email"]').fill(vaultAdmin.email);
+  await vaultPage.locator('input[name="password"]').fill(vaultAdmin.password);
+  await vaultPage.getByRole('button', { name: 'Continue with Email' }).click();
+  await vaultPage.waitForURL(/\/organizations\/[^/]+\/projects/, { timeout: 90_000 });
+  // API bootstrap creates the administrator, but the pinned native UI still
+  // requires the first-run access/review wizard. Complete it with the secure
+  // invite-only default, not a bypass or direct database update.
+  const projectsUrl = 'http://localhost:8084/organizations/' + vaultAdmin.organizationId + '/projects/secret-management';
+  await vaultPage.goto(projectsUrl, { waitUntil: 'domcontentloaded' });
+  try {
+    await vaultPage.getByText('Control who can join', { exact: true }).waitFor();
+    assert.equal(await vaultPage.locator('#signup-disabled').getAttribute('data-state'), 'checked', 'Invite-only default');
+    await vaultPage.getByRole('button', { name: 'Continue', exact: true }).click();
+    await vaultPage.getByText('Review your settings', { exact: true }).waitFor();
+    await vaultPage.getByRole('button', { name: 'Finish setup', exact: true }).click();
+    await vaultPage.getByText('Your instance is ready.', { exact: true }).waitFor();
+    await vaultPage.getByRole('button', { name: /Go to dashboard/ }).click();
+    await vaultPage.waitForURL(/\/organizations\/[^/]+\/projects/);
+    await vaultPage.goto(projectsUrl, { waitUntil: 'domcontentloaded' });
+    await vaultPage.getByText('Hoverseer a', { exact: true }).first().waitFor();
+    await vaultPage.getByText('Hoverseer b', { exact: true }).first().waitFor();
+    await vaultPage.getByText('Hoverseer team', { exact: true }).first().waitFor();
+  } catch (error) {
+    await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-project-list-failure.png', fullPage: true });
+    throw error;
+  }
+  await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-projects.png', fullPage: true });
+  await vaultPage.goto('http://localhost:8084/organizations/' + vaultAdmin.organizationId
+    + '/projects/secret-management/' + vaultAdmin.projectIds.a + '/access-management', { waitUntil: 'domcontentloaded' });
+  try {
+    await vaultPage.getByRole('tab', { name: 'Machine Identities' }).click();
+    await vaultPage.getByText('Cruncher a', { exact: true }).first().waitFor();
+  } catch (error) {
+    await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-access-failure.png', fullPage: true });
+    throw error;
+  }
+  await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-workspace-access.png', fullPage: true });
+  await vaultPage.close();
 });

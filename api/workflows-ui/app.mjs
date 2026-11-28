@@ -71,6 +71,7 @@ function setup() {
   let selection;
   let workspaceId;
   let executionNamespace = namespace;
+  let workspaceMode = false;
   let controls = [];
   let pending;
   let activeRun;
@@ -100,6 +101,7 @@ function setup() {
     revision.textContent = [workflow.version && `v${workflow.version}`, workflow.revision.slice(0, 12)]
       .filter(Boolean).join(' · ');
     revision.title = workflow.revision;
+    find('deploy-note').hidden = !studioUrl;
     fields.replaceChildren();
     controls = [];
     const simple = supportsFields(schema);
@@ -177,8 +179,12 @@ function setup() {
       requestStatus.textContent = 'Workflow started.';
       find('run-title').textContent = workflow.title;
       find('run-status').textContent = 'Checking run status…';
-      const path = [executionNamespace, run.workflowId, run.runId].map(encodeURIComponent);
-      find('run-link').href = joinedUrl(temporal, `namespaces/${path[0]}/workflows/${path[1]}/${path[2]}/history`);
+      find('run-id').textContent = run.workflowId;
+      if (!workspaceMode) {
+        const path = [executionNamespace, run.workflowId, run.runId].map(encodeURIComponent);
+        find('run-link').href = joinedUrl(temporal, `namespaces/${path[0]}/workflows/${path[1]}/${path[2]}/history`);
+        find('run-link').hidden = false;
+      }
       find('run-result').hidden = true;
       find('run').hidden = false;
       activeRun?.abort();
@@ -229,6 +235,8 @@ function setup() {
       find('identity').textContent = `Signed in as ${identity.name}`;
       if (!identity.workspace) throw new Error('No authorized workspace.');
       workspaceId = identity.workspace.id;
+      workspaceMode = identity.workspaceExecution;
+      find('temporal-link').hidden = workspaceMode;
       find('workspace-name').textContent = `${identity.workspace.name} (${identity.workspace.role})`;
       find('workspace-context').hidden = false;
       if (identity.executionNamespace === null) {
@@ -237,7 +245,7 @@ function setup() {
       }
       executionNamespace = identity.executionNamespace ?? namespace;
       find('execution-context').textContent = identity.workspaceExecution
-        ? `Execution namespace: ${executionNamespace}.`
+        ? `Execution namespace: ${executionNamespace}. Switch in HITLy, then return here. Runs belong to their initiating user.`
         : 'Workflow resources are still shared.';
       if (identity.workspaceExecution) studioUrl = identity.studioUrl;
       find('studio-link').hidden = !studioUrl;

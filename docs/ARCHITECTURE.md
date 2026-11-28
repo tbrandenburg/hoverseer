@@ -27,7 +27,7 @@ flowchart TD
     Dashboard -.-> API
     Dashboard -.-> Temporal
     Dashboard -.-> Infisical["Infisical admin"]
-    Cruncher -->|"Read credentials at startup when enabled"| Infisical
+    Cruncher -->|"Validate at startup; read during approval"| Infisical
 
     subgraph Workflows["Workflow services"]
         Studio["Zigflow Studio"]
@@ -48,6 +48,46 @@ flowchart TD
     Zigflow -.->|"Older HTTP workflows"| Gateway["Compatibility approval gateway"]
     Gateway -.-> HOTL
 ```
+
+## Workspace mode
+
+The Docker Compose overlay retains one shared Homepage, HITLy, API and Temporal server. It adds a fixed Studio, YAML directory, Zigflow worker and Cruncher worker per configured workspace. Optional Infisical projects and read-only machine identities are independent. Temporal namespaces are routing and history boundaries, not a sandbox.
+
+```mermaid
+flowchart TD
+    People["Authors and reviewers"] --> Home["Shared Homepage"]
+    Home --> API["Hoverseer Workflows / REST / MCP / A2A"]
+    Home --> HITLy["HITLy: identity, memberships, approvals"]
+    API <-->|"Live membership checks"| HITLy
+    API -->|"Verified workspace routing"| Temporal["Shared Temporal server"]
+    subgraph A["Personal or team workspace (repeat)"]
+        Studio["Protected Studio"] --> YAML[("Workspace YAML")]
+        YAML --> Zigflow["Zigflow worker"]
+        YAML --> API
+        Cruncher["Cruncher worker"]
+        Vault["Scoped Infisical project"]
+        Cruncher -->|"Read approval credentials"| Vault
+    end
+    API -->|"Workspace-specific edit link"| Studio
+    Studio -->|"Live authorization"| API
+    Zigflow <-->|"Workspace namespace"| Temporal
+    Cruncher <-->|"Workspace namespace"| Temporal
+    Cruncher -->|"Workspace approval project"| HITLy
+    HITLy -->|"Decision signal"| Temporal
+    HITLy --> DB[("HITLy PostgreSQL")]
+    Vault --- Infisical["One Infisical installation, optional"]
+```
+
+### Operational boundaries
+
+- The reference multiuser deployment is Docker Compose; Kubernetes remains single-environment.
+- Each mapped workspace shares the public catalog aliases and input schemas, but can change the YAML implementation. A managed run belongs to the initiating user even in a shared workspace.
+- Saving YAML is not deployment. Finish active executions; an administrator runs `./hoverseer docker reload workspace-a` to check catalog compatibility, validate the selected YAML files, then restart its worker and the API. A rejected preflight does not restart either service. Invalid files still need repair before a cold startup.
+- The workspace overlay removes published raw Temporal Web and the legacy Studio port. Host administrators retain Docker access, including Temporal CLI commands. Do not publish raw services or give untrusted users Docker access.
+- HITLy and Infisical permissions are administered separately. Removing a HITLy membership denies new API and Studio requests, but does not revoke Infisical accounts or cancel already-running workflows. Administrators must manage both systems.
+- Shell activities run with the worker's OS identity and network. Namespace separation and scoped credentials do not protect against malicious workflow authors.
+
+The cumulative full-stack test and its screenshots are published in GitHub Actions under `smoke-diagnostics`. It exercises the original deployment and the workspace and Infisical overlays in one disposable stack.
 
 ## Repository layout
 

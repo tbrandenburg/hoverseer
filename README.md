@@ -1,6 +1,6 @@
 # Hoverseer
 
-**Run workflows that pause for a human decision, then carry on.**
+**A lightweight workflow platform for trusted teams, with durable execution and human approvals.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Checks](https://github.com/tbrandenburg/hoverseer/actions/workflows/checks.yml/badge.svg)](https://github.com/tbrandenburg/hoverseer/actions/workflows/checks.yml)
@@ -15,11 +15,11 @@ You can start workflows from a web page, the command line, REST, MCP or A2A, so 
 
 ## Status
 
-- Docker Compose is the quickest way to run Hoverseer. Kubernetes manifests are included and described in the [deployment guide](docs/DEPLOYMENT.md).
+- Docker Compose is the reference deployment, including optional multi-workspace mode. Kubernetes manifests remain single-environment and are not covered by the full-stack acceptance test.
 - Zigflow is pre-1.0 and pinned to `0.18.1`. Its maintainers say backwards-incompatible changes may still occur before v1.0.
 - Zigflow Studio is a work in progress and is treated here as an authoring convenience. Workflows are standard Zigflow YAML, and stock Zigflow runs them.
 - Shell steps run with the same user, filesystem and network as the approval worker. Use them only with trusted workflow authors.
-- The dashboard has no authentication of its own and listens on localhost by default. Add authentication or an authenticated proxy before publishing it. The API accepts individual HITLy sessions or a privileged service bearer token. This is still a trusted local deployment, not isolated multi-tenancy.
+- The dashboard is a shared launchpad; HITLy verifies individual sessions and memberships. Workspace mode uses independent Studio instances, YAML directories, workers, Temporal namespaces and optional Infisical projects. Raw Temporal Web and the legacy Studio are not published in workspace mode. This is a trusted-team MVP, not a sandbox or public multi-tenant SaaS.
 
 ## Features
 
@@ -30,11 +30,12 @@ You can start workflows from a web page, the command line, REST, MCP or A2A, so 
 | **Author in YAML or visually** | Studio edits plain Zigflow YAML and adds **Request approval** and **Run shell** to its palette. |
 | **Start from anywhere** | The Workflows page, the `./hoverseer` CLI, REST with OpenAPI, MCP tools and A2A skills share one catalog and the same runs. |
 | **Shell steps** | Run multi-line scripts that share a working directory across the steps of one run. |
-| **Self-hosted** | Docker Compose or Kubernetes with Kustomize. No external service is required; Infisical for credentials is optional. |
+| **Self-hosted** | Docker Compose with optional workspace and Infisical overlays; single-environment Kubernetes manifests are also included. |
+| **Personal and shared workspaces** | Reuse HITLy memberships, separate authoring and execution, and optionally scope approval credentials through Infisical. |
 
 ## Quick start
 
-You need Bash, OpenSSL, Docker and Docker Compose v2.24 or later. Ports `3000`, `3001`, `8081`, `8082` and `8233` must be free on `localhost`.
+You need Bash, OpenSSL, Docker and Docker Compose v2.24.4 or later. Ports `3000`, `3001`, `8081`, `8082` and `8233` must be free on `localhost`.
 
 ```bash
 git clone https://github.com/tbrandenburg/hoverseer
@@ -68,9 +69,13 @@ Then start the article review from the Workflows page, as shown in the tour belo
 
 Details, Kubernetes and credential management with Infisical are in the [deployment guide](docs/DEPLOYMENT.md).
 
+### Enable trusted multiuser mode
+
+Follow the [workspace deployment checklist](docs/DEPLOYMENT.md#optional-static-workspace-execution-docker-compose). Use real HITLy workspace IDs, separate directories and worker groups, and optionally Infisical projects. Finish legacy runs before switching modes. The CLI uses the configured overlays when you run `./hoverseer docker up` again. All managed workspaces currently share the public workflow names and input schemas; each can change its own implementation. Team runs remain owned by their initiating user.
+
 ## Tour
 
-This walkthrough follows one article review from start to finish.
+The existing screenshots below show the original single-environment article-review walkthrough. For the actual multiuser experience, see the `smoke-diagnostics` artifact from the latest successful [Checks workflow](https://github.com/tbrandenburg/hoverseer/actions/workflows/checks.yml), which contains personal and team Workflows pages, protected Studio editing, approval details and Infisical project access screens.
 
 ### 1. Start at the dashboard
 
@@ -100,7 +105,7 @@ After the decision, the Workflows page shows `COMPLETED` and the output (`ready_
 
 ### 5. Change the workflow
 
-Open the same workflow in Studio to see its steps and edit them. Studio saves Zigflow YAML to the shared workflow volume. After active runs finish, run `./hoverseer docker reload` to load the change.
+Open the same workflow in Studio to see its steps and edit them. Studio saves Zigflow YAML to the shared workflow volume. After active runs finish, an administrator runs `./hoverseer docker reload` (single environment) or `./hoverseer docker reload workspace-a` (workspace mode). The CLI checks the catalog contract and validates YAML before restarting the selected worker and API.
 
 ![Zigflow Studio showing the article review workflow as four connected steps](docs/images/studio.png)
 
@@ -121,7 +126,7 @@ flowchart LR
 Zigflow runs the workflow definition. When it reaches a `call: activity` step, Temporal hands the activity to Cruncher, a small Node.js worker that creates the HITLy request or runs the shell script. The workflow then waits for the `hitly.decision` signal, with a timeout that the workflow itself defines. The full service list, ports and repository layout are in the [architecture guide](docs/ARCHITECTURE.md).
 
 <details>
-<summary>Full architecture diagram</summary>
+<summary>Single-environment architecture diagram</summary>
 
 ```mermaid
 flowchart TD
@@ -132,7 +137,7 @@ flowchart TD
     Dashboard -.-> API
     Dashboard -.-> Temporal
     Dashboard -.-> Infisical["Infisical admin"]
-    Cruncher -->|"Read credentials at startup when enabled"| Infisical
+    Cruncher -->|"Validate at startup; read during approval"| Infisical
 
     subgraph Workflows["Workflow services"]
         Studio["Zigflow Studio"]
@@ -155,6 +160,8 @@ flowchart TD
 ```
 
 </details>
+
+For the multiuser topology and trust boundaries, see [Architecture](docs/ARCHITECTURE.md#workspace-mode).
 
 ## Documentation
 

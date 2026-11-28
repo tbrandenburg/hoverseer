@@ -2,8 +2,11 @@
 # additional namespace; no Docker socket, control plane or auto-provisioning.
 services:
   dashboard:
-    environment:
-      HOMEPAGE_VAR_STUDIO_URL: ${HOVERSEER_WORKFLOWS_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}/workflows}
+    volumes:
+      - ./deploy/dashboard/services.workspaces.yaml:/app/config/services.yaml:ro
+  # Raw Temporal Web exposes every namespace; do not publish it in workspace mode.
+  temporal:
+    ports: !reset []
   # In workspace mode the old unprotected Studio must not remain published.
   studio:
     ports: !reset []
@@ -21,6 +24,7 @@ services:
     environment:
       HOVERSEER_STUDIO_NAMESPACE: workspace-a
       ORIGIN: http://localhost:3002
+      HOVERSEER_WORKFLOWS_URL: ${HOVERSEER_WORKFLOWS_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}/workflows}
     volumes:
       - ./workspace-data/workspace-a:/workflows
     ports:
@@ -30,6 +34,7 @@ services:
     environment:
       HOVERSEER_STUDIO_NAMESPACE: workspace-b
       ORIGIN: http://localhost:3003
+      HOVERSEER_WORKFLOWS_URL: ${HOVERSEER_WORKFLOWS_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}/workflows}
     volumes:
       - ./workspace-data/workspace-b:/workflows
     ports:
@@ -39,6 +44,7 @@ services:
     environment:
       HOVERSEER_STUDIO_NAMESPACE: workspace-team
       ORIGIN: http://localhost:3004
+      HOVERSEER_WORKFLOWS_URL: ${HOVERSEER_WORKFLOWS_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}/workflows}
     volumes:
       - ./workspace-data/workspace-team:/workflows
     ports:

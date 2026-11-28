@@ -12,11 +12,22 @@ const port = Number(process.env.PORT ?? 8081);
 const storageDir = process.env.ZIGFLOW_STORAGE_DIR ?? '/workflows';
 const catalogFile = process.env.HOVERSEER_CATALOG ?? '/config/managed-workflows.yaml';
 const mapping = parseWorkspaceNamespaces(process.env.HOVERSEER_WORKSPACE_NAMESPACES, namespace);
+const catalog = await loadCatalog(catalogFile, storageDir);
 const workspaceExecutions = await loadWorkspaceExecutions(mapping, {
   root: process.env.HOVERSEER_WORKSPACE_ROOT ?? '/workspace-data',
-  catalog: mapping === null ? [] : await loadCatalog(catalogFile, storageDir),
+  catalog,
   createClient: namespace => new Client({ connection, namespace }),
 });
+// The operator preflight reads the same files and checks the same contract as
+// startup, without binding a port or changing the running API or workers.
+if (process.argv[2] === '--check-catalog') {
+  const target = process.argv[3];
+  if (target && ![...(mapping?.values() ?? [])].includes(target)) {
+    throw Error('Workspace namespace is not configured: ' + target);
+  }
+  console.log('Managed workflow catalogs are compatible.');
+  process.exit(0);
+}
 const app = await buildServer({
   client,
   storageDir,
