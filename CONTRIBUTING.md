@@ -43,3 +43,19 @@ Discuss a new DSL capability in the [Zigflow repository](https://github.com/zigf
 ## Local checks and development
 
 Run `make help` to see the development commands. `make install` installs the API and Cruncher dependencies. Then run `make check` for the same lint, format, and test targets used by CI. The format target reports whitespace errors without rewriting files. Lint needs Node.js 24, Docker with Buildx and Compose, and `kubectl`. Use `make lint-code` when you only need the source syntax checks.
+
+### Full-stack smoke checks
+
+GitHub Actions runs the same Checks workflow on pull requests, pushes to main and manual dispatch. The Smoke job builds the real Compose stack with fresh volumes and runs `make smoke`. Logs, container status, JUnit output and selected non-secret screenshots are uploaded as `smoke-diagnostics`, even on failure. Infisical is optional and is not started in this baseline.
+
+For local reproduction, use a **disposable, empty** checkout/stack (the test creates a HITLy account and project, rewrites test-only HITLy credentials, edits a bundled workflow and restarts workers):
+
+```bash
+make smoke-install
+./hoverseer init
+./hoverseer docker up
+make smoke
+docker compose down -v
+```
+
+Do not run the smoke test against an existing installation or real credentials. See [AGENTS.md](AGENTS.md) for the CI development contract.
