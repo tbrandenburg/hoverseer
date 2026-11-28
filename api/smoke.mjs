@@ -94,8 +94,16 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   await ready();
   console.log('Checking Homepage, Studio and public workflow catalog');
   await page.goto('http://localhost:8082/', { waitUntil: 'domcontentloaded' });
-  await page.getByText('Workflow Studio', { exact: true }).waitFor();
-  await page.screenshot({ path: artifacts + '/screenshots/homepage.png', fullPage: true });
+  try {
+    for (const target of [studio, hitly, api + '/workflows', 'http://localhost:8233']) {
+      const links = page.locator('a[href="' + target + '"], a[href="' + target + '/"]');
+      await links.first().waitFor({ state: 'attached', timeout: 30_000 });
+    }
+  } finally {
+    await page.screenshot({ path: artifacts + '/screenshots/homepage.png', fullPage: true });
+    console.log('Homepage title:', await page.title());
+    console.log('Homepage body:', (await page.locator('body').innerText()).slice(0, 1000));
+  }
   await page.goto(studio + '/workflows/article-review', { waitUntil: 'domcontentloaded' });
   await page.locator('body').waitFor();
   await page.screenshot({ path: artifacts + '/screenshots/studio.png', fullPage: true });
