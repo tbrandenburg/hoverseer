@@ -781,7 +781,18 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   await vaultPage.locator('input[name="password"]').fill(vaultAdmin.password);
   await vaultPage.getByRole('button', { name: 'Continue with Email' }).click();
   await vaultPage.waitForURL(/\/organizations\/[^/]+\/projects/, { timeout: 90_000 });
-  await vaultPage.getByText('Hoverseer a', { exact: true }).first().waitFor();
+  // The org landing page shows product categories, not individual projects.
+  // Open the pinned upstream Secrets Management project list explicitly.
+  await vaultPage.goto('http://localhost:8084/organizations/' + vaultAdmin.organizationId
+    + '/projects/secret-management', { waitUntil: 'domcontentloaded' });
+  try {
+    await vaultPage.getByText('Hoverseer a', { exact: true }).first().waitFor();
+    await vaultPage.getByText('Hoverseer b', { exact: true }).first().waitFor();
+    await vaultPage.getByText('Hoverseer team', { exact: true }).first().waitFor();
+  } catch (error) {
+    await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-project-list-failure.png', fullPage: true });
+    throw error;
+  }
   await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-projects.png', fullPage: true });
   await vaultPage.goto('http://localhost:8084/organizations/' + vaultAdmin.organizationId
     + '/projects/secret-management/' + vaultAdmin.projectIds.a + '/access-management', { waitUntil: 'domcontentloaded' });

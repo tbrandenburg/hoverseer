@@ -44,6 +44,18 @@ export async function provisionInfisical(projects) {
   for (const [suffix, credentials] of Object.entries(projects)) {
     const project = (await call('/api/v1/projects', { projectName: 'Hoverseer ' + suffix }, admin)).project;
     assert.ok(project.id);
+    // The bootstrap machine identity creates these projects. Explicitly grant
+    // the disposable human administrator access for the native UI review.
+    const membershipResponse = await fetch(base + '/api/v1/projects/' + project.id + '/user/' + boot.user.id + '/membership', {
+      headers: { authorization: 'Bearer ' + admin }, signal: AbortSignal.timeout(15_000),
+    });
+    if (membershipResponse.status === 404) {
+      await membershipResponse.body?.cancel();
+      await call('/api/v1/projects/' + project.id + '/memberships', { emails: [email], roleSlugs: ['admin'] }, admin);
+    } else {
+      assert.equal(membershipResponse.status, 200, 'Infisical administrator project membership lookup');
+      await membershipResponse.body?.cancel();
+    }
     for (const [name, value] of Object.entries({ HITLY_PROJECT_ID: credentials.projectId, HITLY_API_KEY: credentials.apiKey })) {
       await call('/api/v4/secrets/' + name, {
         projectId: project.id, environment: 'prod', secretPath: '/', secretValue: value,
