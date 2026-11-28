@@ -59,7 +59,7 @@ function setup() {
   find('account-link').href = hitly;
   find('workspace-switch').href = joinedUrl(hitly, 'inbox');
   find('login-link').href = joinedUrl(hitly, 'login');
-  find('studio-link').href = studio;
+  let studioUrl = studio;
   find('temporal-link').href = temporal;
   const catalog = find('catalog');
   const form = find('run-form');
@@ -94,7 +94,8 @@ function setup() {
     }
     find('workflow-title').textContent = workflow.title;
     find('summary').textContent = workflow.summary ?? '';
-    find('edit-link').href = joinedUrl(studio, `workflows/${encodeURIComponent(workflow.project)}`);
+    find('edit-link').hidden = !studioUrl;
+    if (studioUrl) find('edit-link').href = joinedUrl(studioUrl, `workflows/${encodeURIComponent(workflow.project)}`);
     const revision = find('revision');
     revision.textContent = [workflow.version && `v${workflow.version}`, workflow.revision.slice(0, 12)]
       .filter(Boolean).join(' · ');
@@ -194,7 +195,10 @@ function setup() {
   async function loadCatalog() {
     const status = find('catalog-status');
     try {
-      const [workflows, spec] = await Promise.all([getJson('/v1/workflows'), getJson('/openapi.json')]);
+      const [workflows, spec] = await Promise.all([
+        getJson('/v1/workspace/workflows', { headers: { 'x-hitly-workspace-id': workspaceId } }),
+        getJson('/openapi.json'),
+      ]);
       for (const workflow of workflows) {
         const item = document.createElement('li');
         const button = document.createElement('button');
@@ -233,13 +237,11 @@ function setup() {
       }
       executionNamespace = identity.executionNamespace ?? namespace;
       find('execution-context').textContent = identity.workspaceExecution
-        ? `Execution namespace: ${executionNamespace}. Shared workflow catalog; edit via administrator.`
+        ? `Execution namespace: ${executionNamespace}.`
         : 'Workflow resources are still shared.';
-      if (identity.workspaceExecution) {
-        // Studio still points at the legacy volume; never imply it edits the selected workspace.
-        find('studio-link').hidden = true;
-        find('edit-link').hidden = true;
-      }
+      if (identity.workspaceExecution) studioUrl = identity.studioUrl;
+      find('studio-link').hidden = !studioUrl;
+      if (studioUrl) find('studio-link').href = studioUrl;
       find('workspace').hidden = false;
       await loadCatalog();
     } catch (error) {

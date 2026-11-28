@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import swagger from '@fastify/swagger';
 import { loadCatalog } from './catalog.mjs';
 import { accessCheck, bearerAuth, fastifyAuth } from './auth.mjs';
-import { withWorkspace } from './workspace.mjs';
+import { withWorkspace, workspaceHeader } from './workspace.mjs';
 import { RunError, workflowIdPattern } from './runs.mjs';
 import { routeRuns } from './execution.mjs';
 import { installWorkflowsUi } from './workflows-ui.mjs';
@@ -41,12 +41,20 @@ function sendRunError(request, reply, cause) {
 }
 
 export async function buildServer({
-  client, storageDir, catalogFile, token, sessionUrl, workspaceExecutions = null, logger = false, publicOrigin = 'http://localhost:8081', ui,
+  client, storageDir, catalogFile, token, sessionUrl, workspaceExecutions = null, workspaceStudioUrls = {}, logger = false, publicOrigin = 'http://localhost:8081', ui,
 }) {
   const catalog = await loadCatalog(catalogFile, storageDir);
   const origin = new URL(publicOrigin);
   if (!['http:', 'https:'].includes(origin.protocol) || origin.href !== `${origin.origin}/`) {
     throw new Error('HOVERSEER_PUBLIC_URL must be an HTTP(S) origin without a path');
+  }
+  const studioUrls = new Map();
+  for (const [namespace, value] of Object.entries(workspaceStudioUrls)) {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.href !== url.origin + '/') {
+      throw Error('Workspace Studio URLs must be HTTP(S) origins');
+    }
+    studioUrls.set(namespace, url.origin);
   }
   const app = Fastify({ logger, bodyLimit: 1024 * 1024 });
   app.decorateRequest('principal', null);
@@ -93,7 +101,35 @@ export async function buildServer({
     ...request.principal,
     executionNamespace: runs.namespace(request.principal),
     workspaceExecution: workspaceExecutions !== null,
+    studioUrl: request.principal.kind === 'user' && workspaceExecutions !== null
+      ? studioUrls.get(runs.namespace(request.principal)) ?? null : null,
   }));
+
+  // A Studio instance asks about its own fixed namespace. Resolve its
+  // workspace ID from the same configuration as execution routing; a client
+  // header or an unrelated active-workspace cookie cannot change that target.
+  app.get('/v1/studio-access/:namespace', { schema: { hide: true } }, async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const entry = [...(workspaceExecutions ?? [])].find(([, value]) => value.namespace === request.params.namespace);
+    if (!entry) return reply.code(403).send({ message: 'Studio workspace is not configured' });
+    const [workspaceId] = entry;
+    const result = await membership({ cookie: request.headers.cookie, [workspaceHeader]: workspaceId }, { allowCookie: true });
+    if (result.failure) return reply.code(result.failure.status).send({ message: result.failure.message });
+    if (result.principal.kind !== 'user' || result.principal.workspace.id !== workspaceId) {
+      return reply.code(403).send({ message: 'Studio access denied' });
+    }
+    return reply.code(204).send();
+  });
+
+  // Preserve the public contract while displaying actual workspace metadata
+  // (including project name, title and revision) in the authenticated UI.
+  const catalogEntries = entries => entries.map(({ name, title, summary, project, revision, version }) => ({
+    name, title, summary, project, revision, version, startUrl: '/v1/workflows/' + name + '/runs',
+  }));
+  app.get('/v1/workspace/workflows', { onRequest: auth, schema: { hide: true } }, async request => {
+    const entry = request.principal.kind === 'user' ? workspaceExecutions?.get(request.principal.workspace.id) : undefined;
+    return catalogEntries(entry?.catalog ?? catalog);
+  });
 
   app.get('/v1/workflows', {
     schema: {
@@ -118,9 +154,7 @@ export async function buildServer({
         },
       },
     },
-  }, async () => catalog.map(({ name, title, summary, project, revision, version }) => ({
-    name, title, summary, project, revision, version, startUrl: `/v1/workflows/${name}/runs`,
-  })));
+  }, async () => catalogEntries(catalog));
 
   for (const workflow of catalog) {
     app.post(`/v1/workflows/${workflow.name}/runs`, {
