@@ -17,7 +17,7 @@ Run `./hoverseer docker reload` after changing a catalog entry or a saved workfl
 | `POST /v1/workflows/{name}/runs` | Start a named workflow with a JSON body and return `202 Accepted` and a URL to check its status |
 | `GET /v1/runs/{workflowId}` | Read the execution status and the result when it completes |
 
-Discovery is public. Start and status requests require the bearer token in `.env`. The API accepts valid JSON and Zigflow enforces the workflow's input schema during execution.
+Discovery remains public during the identity-only transition. Start and status requests accept a HITLy session bearer token (or a same-host HITLy browser session for REST), or the existing privileged service bearer token in `.env`. The API accepts valid JSON and Zigflow enforces the workflow's input schema during execution.
 
 ```bash
 token=$(sed -n 's/^HOVERSEER_API_TOKEN=//p' .env)
@@ -28,9 +28,15 @@ curl -i http://localhost:8081/v1/workflows/article-review/runs \
   --data '{"headline":"Release notes","draft":"What changed this week."}'
 ```
 
-Call the returned `Location` URL with the same bearer token. A run waiting for a HITLy decision remains `RUNNING`. Retrying the same workflow with the same idempotency key and input returns the existing execution for as long as Temporal retains it. Reusing the key with different input returns `409 Conflict`.
+Call the returned `Location` URL with the same bearer token. Individual users can read or cancel only runs they initiated; service-token callers can access all managed runs, including legacy executions. Idempotency keys are scoped to each user. A run waiting for a HITLy decision remains `RUNNING`. Retrying the same workflow with the same idempotency key and input returns the existing execution for as long as Temporal retains it. Reusing the key with different input returns `409 Conflict`.
 
 For remote callers, route HTTPS through a reverse proxy to the Compose API port or through an Ingress to the Kubernetes Service `api:8081`. The API binds to loopback through Compose and uses a ClusterIP Service in Kubernetes. Keep the approval gateway internal. Its own OpenAPI document is available at `http://approval-gateway:8080/openapi.json` from within the stack.
+
+## Identity-only milestone
+
+Sign in at HITLy and return to Workflows on the same browser hostname (`localhost` in the reference deployment). The Workflows page uses the HTTP-only session cookie and requires same-origin writes. Hoverseer verifies each request with HITLy; it does not store passwords or session records. For browser deployments, configure `HOVERSEER_PUBLIC_URL` to the exact Workflows origin, `HOVERSEER_HOTL_URL` to the browser-visible HITLy URL, and keep both on the same host (ports may differ). `HITLY_URL` is the internal identity service address.
+
+This milestone does not implement workspace membership enforcement. The catalog is shared, all users can start its workflows, the privileged service token remains for compatibility and CI, and direct Studio/Temporal access remains local/admin-trusted. Do not expose this deployment to untrusted users or publish the raw services. Workspace routing and service isolation follow in later PRs.
 
 ## Call workflows through MCP or A2A
 
@@ -41,7 +47,7 @@ MCP tools and A2A skills use the same managed catalog and Temporal runs as the H
 | MCP | Connect to `/mcp` using Streamable HTTP and list tools. | Call a tool such as `start_article_review` with the advertised Zigflow input. Read the run through `get_run`. |
 | A2A 1.0 HTTP+JSON | Read `/.well-known/agent-card.json` to discover the endpoint and its skills. | Send a data part with `workflow` and `input`, then get the resulting task and its output artifact. |
 
-Configure the same `Authorization: Bearer <token>` header as the workflow HTTP API. MCP clients must support setting a bearer header for this deployment. For public deployments, set `HOVERSEER_PUBLIC_URL` to the HTTPS origin callers use. The Agent Card advertises this origin and the MCP endpoint checks it alongside the local hostnames. The reverse proxy should preserve the original Host header.
+Configure the same `Authorization: Bearer <token>` header as the workflow HTTP API. For individual CLI/REST/MCP/A2A access, sign in through HITLy's existing Better Auth `POST /api/auth/sign-in/email` endpoint (including any required MFA); use its issued session bearer token. It is an expiring/revocable session credential, not a newly invented permanent API key. Keep it private. `GET /v1/me` identifies the authenticated principal without returning the session token. MCP clients must support setting a bearer header for this deployment. For public deployments, set `HOVERSEER_PUBLIC_URL` to the HTTPS origin callers use. The Agent Card advertises this origin and the MCP endpoint checks it alongside the local hostnames. The reverse proxy should preserve the original Host header.
 
 An MCP caller can supply an `Idempotency-Key` header on a start call. An A2A caller can retry the same message ID with the same input to recover the existing task. Each interface returns the same Temporal workflow ID for the same execution.
 

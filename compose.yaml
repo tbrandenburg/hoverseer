@@ -131,6 +131,8 @@ services:
       HOVERSEER_CATALOG: /catalog/catalog.yaml
       HOVERSEER_STUDIO_URL: ${HOVERSEER_STUDIO_URL:-http://localhost:3000}
       HOVERSEER_TEMPORAL_WEB_URL: ${HOVERSEER_TEMPORAL_WEB_URL:-http://localhost:8233}
+      HITLY_URL: http://hotl:3001
+      HOVERSEER_HITLY_URL: ${HOVERSEER_HOTL_URL:-http://localhost:3001}
       HOVERSEER_API_TOKEN: ${HOVERSEER_API_TOKEN:-}
       HOVERSEER_PUBLIC_URL: ${HOVERSEER_PUBLIC_URL:-http://localhost:${HOVERSEER_API_PORT:-8081}}
     depends_on:

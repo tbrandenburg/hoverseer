@@ -12,9 +12,11 @@ const app = await buildServer({
   storageDir: process.env.ZIGFLOW_STORAGE_DIR ?? '/workflows',
   catalogFile: process.env.HOVERSEER_CATALOG ?? '/config/managed-workflows.yaml',
   token: process.env.HOVERSEER_API_TOKEN,
+  sessionUrl: process.env.HITLY_URL ?? 'http://hotl:3001',
   logger: true,
   ui: {
     namespace,
+    hitlyUrl: process.env.HOVERSEER_HITLY_URL || undefined,
     studioUrl: process.env.HOVERSEER_STUDIO_URL || undefined,
     temporalUrl: process.env.HOVERSEER_TEMPORAL_WEB_URL || undefined,
   },

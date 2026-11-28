@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { hostHeaderValidation, originValidation } from '@modelcontextprotocol/fastify';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { createMcpHandler, fromJsonSchema, McpServer } from '@modelcontextprotocol/server';
@@ -22,7 +23,9 @@ async function runTool(operation) {
 }
 
 export function installMcp(app, { catalog, runs, auth, hostname }) {
+  const principals = new AsyncLocalStorage();
   const handler = createMcpHandler(({ requestInfo }) => {
+    const principal = principals.getStore();
     const key = requestInfo?.headers.get('idempotency-key') ?? undefined;
     const server = new McpServer({ name: 'hoverseer', version: '1.0.0' });
     for (const workflow of catalog) {
@@ -37,7 +40,7 @@ export function installMcp(app, { catalog, runs, auth, hostname }) {
       server.registerTool(`start_${name}`, {
         description: `Start ${workflow.title}.${workflow.summary ? ` ${workflow.summary}` : ''} Returns a run ID for get_run.`,
         inputSchema: fromJsonSchema(input),
-      }, args => runTool(() => runs.start(workflow, wrapped ? args.input : args, key)));
+      }, args => runTool(() => runs.start(workflow, wrapped ? args.input : args, key, principal)));
     }
     server.registerTool('get_run', {
       description: 'Read the status and completed output of a Hoverseer run.',
@@ -47,7 +50,7 @@ export function installMcp(app, { catalog, runs, auth, hostname }) {
         required: ['workflowId'],
       }),
       annotations: { readOnlyHint: true },
-    }, ({ workflowId }) => runTool(() => runs.get(workflowId)));
+    }, ({ workflowId }) => runTool(() => runs.get(workflowId, principal)));
     return server;
   });
   const handle = toNodeHandler(handler);
@@ -80,7 +83,7 @@ export function installMcp(app, { catalog, runs, auth, hostname }) {
         },
       },
       handler(request, reply) {
-        return handle(request.raw, reply.raw, request.body);
+        return principals.run(request.principal, () => handle(request.raw, reply.raw, request.body));
       },
     });
   }

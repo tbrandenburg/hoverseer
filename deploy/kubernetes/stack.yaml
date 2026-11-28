@@ -130,6 +130,10 @@ spec:
             - {name: api, containerPort: 8081}
           env:
             - {name: TEMPORAL_ADDRESS, value: "temporal:7233"}
+            - {name: HITLY_URL, value: "http://hotl:3001"}
+            - name: HOVERSEER_HITLY_URL
+              valueFrom:
+                secretKeyRef: {name: hoverseer-config, key: HOVERSEER_HOTL_URL, optional: true}
             - name: HOVERSEER_API_TOKEN
               valueFrom:
                 secretKeyRef: {name: hoverseer-config, key: HOVERSEER_API_TOKEN, optional: true}

@@ -165,8 +165,8 @@ export async function installA2a(app, { catalog, runs, check, origin }) {
     userBuilder: UserBuilder.noAuthentication,
     requestHandler: {
       getAgentCard: async () => card,
-      getTask: ({ id }) => taskOperation(() => runs.get(id)),
-      cancelTask: ({ id }) => taskOperation(() => runs.cancel(id), true),
+      getTask: ({ id }) => taskOperation(() => runs.get(id, requests.getStore().principal)),
+      cancelTask: ({ id }) => taskOperation(() => runs.cancel(id, requests.getStore().principal), true),
       async sendMessage({ message, configuration }) {
         if (configuration?.taskPushNotificationConfig) throw new PushNotificationNotSupportedError();
         if (message.taskId || message.contextId) {
@@ -180,25 +180,26 @@ export async function installA2a(app, { catalog, runs, check, origin }) {
         }
         let run;
         try {
-          run = await runs.start(workflow, data.input, `a2a:${message.messageId}`);
+          run = await runs.start(workflow, data.input, `a2a:${message.messageId}`, requests.getStore().principal);
         } catch (cause) {
           if (cause instanceof RunError && cause.status === 409) throw new RequestMalformedError(cause.message);
           throw cause;
         }
         if (configuration?.returnImmediately) return task(run, TaskState.TASK_STATE_SUBMITTED);
-        return taskOperation(() => runs.wait(run.workflowId, requests.getStore()));
+        return taskOperation(() => runs.wait(run.workflowId, requests.getStore().signal, requests.getStore().principal));
       },
     },
   });
 
   await app.register(async scope => {
     await scope.register(expressPlugin);
-    scope.use('/a2a', (req, res, next) => {
+    scope.use('/a2a', async (req, res, next) => {
       const supported = (req.method === 'POST' && req.path === '/message:send')
         || (req.method === 'GET' && /^\/tasks\/[^/:]+$/.test(req.path))
         || (req.method === 'POST' && /^\/tasks\/[^/:]+:cancel$/.test(req.path));
       if (!supported) return next();
-      const failure = check(req.headers.authorization);
+      res.set('Cache-Control', 'no-store');
+      const { failure, principal } = await check(req.headers);
       if (failure) {
         if (failure.status === 401) res.set('WWW-Authenticate', 'Bearer');
         const status = failure.status === 401 ? 'UNAUTHENTICATED' : 'UNAVAILABLE';
@@ -208,7 +209,7 @@ export async function installA2a(app, { catalog, runs, check, origin }) {
       }
       const controller = new AbortController();
       res.once('close', () => controller.abort());
-      return requests.run(controller.signal, () => transport(req, res, next));
+      return requests.run({ signal: controller.signal, principal }, () => transport(req, res, next));
     });
     scope.all('/a2a/*', { schema: { hide: true } }, (_request, reply) => reply.callNotFound());
   });
