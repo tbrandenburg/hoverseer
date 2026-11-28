@@ -251,8 +251,12 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   } finally {
     await bobMcp.close();
   }
-  const signedOut = await bobContext.request.post(hitly + '/api/auth/sign-out', { headers: { origin: hitly } });
-  assert.ok(signedOut.ok(), 'HITLy sign-out');
+  // Use the same server-side revocation endpoint and JSON body as HITLy's own browser UI.
+  const signedOut = await bobContext.request.post(hitly + '/api/session/sign-out', {
+    headers: { origin: hitly }, data: {},
+  });
+  assert.equal(signedOut.status(), 200, 'HITLy sign-out HTTP status');
+  assert.equal((await signedOut.json()).ok, true);
   assert.equal((await bobContext.request.get(api + '/v1/me')).status(), 401);
   assert.equal((await fetch(api + '/v1/me', { headers: bob.headers })).status, 401);
 
