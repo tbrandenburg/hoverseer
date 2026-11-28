@@ -771,35 +771,6 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   await writeFile('.env', directEnv + '\n', { mode: 0o600 });
   await compose(...vaultOverlay, 'up', '-d', '--no-deps', '--force-recreate', 'cruncher-a', 'cruncher-b', 'cruncher-team');
 
-  console.log('Capturing the native Infisical project access controls (no secret values)');
-  const vaultBrowser = await browser.newContext();
-  t.after(() => vaultBrowser.close());
-  const vaultPage = await vaultBrowser.newPage();
-  vaultPage.setDefaultTimeout(60_000);
-  await vaultPage.goto('http://localhost:8084/login', { waitUntil: 'domcontentloaded' });
-  await vaultPage.locator('input[name="email"]').fill(vaultAdmin.email);
-  await vaultPage.locator('input[name="password"]').fill(vaultAdmin.password);
-  await vaultPage.getByRole('button', { name: 'Continue with Email' }).click();
-  await vaultPage.waitForURL(/\/organizations\/[^/]+\/projects/, { timeout: 90_000 });
-  // The org landing page shows product categories, not individual projects.
-  // Open the pinned upstream Secrets Management project list explicitly.
-  await vaultPage.goto('http://localhost:8084/organizations/' + vaultAdmin.organizationId
-    + '/projects/secret-management', { waitUntil: 'domcontentloaded' });
-  try {
-    await vaultPage.getByText('Hoverseer a', { exact: true }).first().waitFor();
-    await vaultPage.getByText('Hoverseer b', { exact: true }).first().waitFor();
-    await vaultPage.getByText('Hoverseer team', { exact: true }).first().waitFor();
-  } catch (error) {
-    await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-project-list-failure.png', fullPage: true });
-    throw error;
-  }
-  await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-projects.png', fullPage: true });
-  await vaultPage.goto('http://localhost:8084/organizations/' + vaultAdmin.organizationId
-    + '/projects/secret-management/' + vaultAdmin.projectIds.a + '/access-management', { waitUntil: 'domcontentloaded' });
-  await vaultPage.getByRole('tab', { name: 'Machine Identities' }).click();
-  await vaultPage.getByText('Cruncher a', { exact: true }).first().waitFor();
-  await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-workspace-access.png', fullPage: true });
-  await vaultPage.close();
   for (const [suffix, namespace, headers, reviewer] of [
     ['a', 'workspace-a', alice.headers, context],
     ['b', 'workspace-b', bobVaultHeaders, bobContext],
@@ -829,4 +800,49 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
         'Approval credential must not appear in Temporal history');
     }
   }
+
+  console.log('Capturing the native Infisical project access controls (no secret values)');
+  const vaultBrowser = await browser.newContext();
+  t.after(() => vaultBrowser.close());
+  const vaultPage = await vaultBrowser.newPage();
+  vaultPage.setDefaultTimeout(60_000);
+  await vaultPage.goto('http://localhost:8084/login', { waitUntil: 'domcontentloaded' });
+  await vaultPage.locator('input[name="email"]').fill(vaultAdmin.email);
+  await vaultPage.locator('input[name="password"]').fill(vaultAdmin.password);
+  await vaultPage.getByRole('button', { name: 'Continue with Email' }).click();
+  await vaultPage.waitForURL(/\/organizations\/[^/]+\/projects/, { timeout: 90_000 });
+  // API bootstrap creates the administrator, but the pinned native UI still
+  // requires the first-run access/review wizard. Complete it with the secure
+  // invite-only default, not a bypass or direct database update.
+  const projectsUrl = 'http://localhost:8084/organizations/' + vaultAdmin.organizationId + '/projects/secret-management';
+  await vaultPage.goto(projectsUrl, { waitUntil: 'domcontentloaded' });
+  try {
+    await vaultPage.getByText('Control who can join', { exact: true }).waitFor();
+    assert.equal(await vaultPage.locator('#signup-disabled').getAttribute('data-state'), 'checked', 'Invite-only default');
+    await vaultPage.getByRole('button', { name: 'Continue', exact: true }).click();
+    await vaultPage.getByText('Review your settings', { exact: true }).waitFor();
+    await vaultPage.getByRole('button', { name: 'Finish setup', exact: true }).click();
+    await vaultPage.getByText('Your instance is ready.', { exact: true }).waitFor();
+    await vaultPage.getByRole('button', { name: /Go to dashboard/ }).click();
+    await vaultPage.waitForURL(/\/organizations\/[^/]+\/projects/);
+    await vaultPage.goto(projectsUrl, { waitUntil: 'domcontentloaded' });
+    await vaultPage.getByText('Hoverseer a', { exact: true }).first().waitFor();
+    await vaultPage.getByText('Hoverseer b', { exact: true }).first().waitFor();
+    await vaultPage.getByText('Hoverseer team', { exact: true }).first().waitFor();
+  } catch (error) {
+    await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-project-list-failure.png', fullPage: true });
+    throw error;
+  }
+  await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-projects.png', fullPage: true });
+  await vaultPage.goto('http://localhost:8084/organizations/' + vaultAdmin.organizationId
+    + '/projects/secret-management/' + vaultAdmin.projectIds.a + '/access-management', { waitUntil: 'domcontentloaded' });
+  try {
+    await vaultPage.getByRole('tab', { name: 'Machine Identities' }).click();
+    await vaultPage.getByText('Cruncher a', { exact: true }).first().waitFor();
+  } catch (error) {
+    await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-access-failure.png', fullPage: true });
+    throw error;
+  }
+  await vaultPage.screenshot({ path: artifacts + '/screenshots/infisical-workspace-access.png', fullPage: true });
+  await vaultPage.close();
 });
