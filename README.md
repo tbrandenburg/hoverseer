@@ -19,7 +19,7 @@ You can start workflows from a web page, the command line, REST, MCP or A2A, so 
 - Zigflow is pre-1.0 and pinned to `0.18.1`. Its maintainers say backwards-incompatible changes may still occur before v1.0.
 - Zigflow Studio is a work in progress and is treated here as an authoring convenience. Workflows are standard Zigflow YAML, and stock Zigflow runs them.
 - Shell steps run with the same user, filesystem and network as the approval worker. Use them only with trusted workflow authors.
-- The dashboard has no authentication of its own and listens on localhost by default. Add authentication or an authenticated proxy before publishing it. The API requires a bearer token to start runs and read their status.
+- The dashboard has no authentication of its own and listens on localhost by default. Add authentication or an authenticated proxy before publishing it. The API accepts individual HITLy sessions or a privileged service bearer token. This is still a trusted local deployment, not isolated multi-tenancy.
 
 ## Features
 
@@ -80,7 +80,7 @@ The dashboard at `localhost:8082` links to every tool and shows whether each ser
 
 ### 2. Run a workflow
 
-Open **Workflows**, pick **Article review**, fill in the form that is generated from the workflow's input schema, and paste the `HOVERSEER_API_TOKEN` value from `.env`. **Run workflow** starts the run. This is the page at the top of this README, shown after the run finished. It lists the managed workflows, offers an **Edit in Studio** link, and links to the run in Temporal.
+Open **Workflows**, pick **Article review**, fill in the form that is generated from the workflow's input schema, after signing in to HITLy using the same browser and hostname. **Run workflow** starts the run. This is the page at the top of this README, shown after the run finished. It lists the managed workflows, offers an **Edit in Studio** link, and links to the run in Temporal.
 
 ### 3. Review the request
 

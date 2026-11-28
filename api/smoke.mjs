@@ -123,16 +123,66 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   await complete('automatic refund', run, 'auto_approved');
   assert.equal((await fetch(api + run.statusUrl)).status, 401);
 
+  console.log('Checking individual HITLy identities');
+  await page.goto(api + '/workflows', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('link', { name: 'Sign in with HITLy' }).waitFor();
+  assert.equal(await page.locator('#workspace').isVisible(), false);
+  assert.equal((await fetch(api + '/v1/me')).status, 401);
+  assert.equal((await fetch(api + '/v1/me', { headers: { authorization: 'Bearer invalid-session' } })).status, 401);
+  async function register(ctx, name, email) {
+    const response = await ctx.request.post(hitly + '/api/auth/sign-up/email', {
+      headers: { origin: hitly },
+      data: { name, email, password: 'Smoke-' + randomUUID() },
+    });
+    assert.ok(response.ok(), 'HITLy signup: HTTP ' + response.status());
+    const token = response.headers()['set-auth-token'] ?? (await response.json()).token;
+    if (typeof token !== 'string' || !token) throw new Error('HITLy did not issue a session token');
+    const who = await ctx.request.get(api + '/v1/me');
+    assert.equal(who.status(), 200);
+    const identity = await who.json();
+    assert.equal(identity.name, name);
+    assert.equal(identity.kind, 'user');
+    const headers = { authorization: 'Bearer ' + token };
+    const bearer = await fetch(api + '/v1/me', { headers });
+    assert.equal(bearer.status, 200);
+    assert.equal((await bearer.json()).id, identity.id);
+    return { identity, headers };
+  }
+  const alice = await register(context, 'CI Alice', 'ci-alice@example.com');
+  const bobContext = await browser.newContext();
+  t.after(() => bobContext.close());
+  const bob = await register(bobContext, 'CI Bob', 'ci-bob@example.com');
+  assert.notEqual(alice.identity.id, bob.identity.id);
+  const retryKey = randomUUID();
+  const aliceRun = await json(api + '/v1/workflows/refund-review/runs', post(refund, {
+    ...alice.headers, 'idempotency-key': retryKey,
+  }), 202);
+  const bobRun = await json(api + '/v1/workflows/refund-review/runs', post(refund, {
+    ...bob.headers, 'idempotency-key': retryKey,
+  }), 202);
+  assert.notEqual(aliceRun.workflowId, bobRun.workflowId);
+  assert.equal((await fetch(api + aliceRun.statusUrl, { headers: bob.headers })).status, 404);
+  assert.equal((await fetch(api + bobRun.statusUrl, { headers: alice.headers })).status, 404);
+  assert.equal((await fetch(api + run.statusUrl, { headers: alice.headers })).status, 404);
+  assert.equal((await context.request.get(api + aliceRun.statusUrl)).status(), 200);
+  assert.equal((await bobContext.request.get(api + aliceRun.statusUrl)).status(), 404);
+  assert.equal((await context.request.post(api + '/v1/workflows/refund-review/runs', {
+    data: refund, headers: { origin: hitly },
+  })).status(), 403);
+  const forged = await context.request.get(api + '/v1/me', { headers: { authorization: 'Bearer invalid-session' } });
+  assert.equal(forged.status(), 401);
+  await complete('Alice private execution', aliceRun, 'auto_approved');
+  await complete('Bob private execution', bobRun, 'auto_approved');
+
   console.log('Checking Workflows browser page');
   await page.goto(api + '/workflows', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Refund review', exact: true }).click();
   await page.locator('#fields input').nth(0).fill('smoke-browser');
   await page.locator('#fields input').nth(1).fill('5000');
-  await page.locator('#token').fill(process.env.HOVERSEER_API_TOKEN);
+  await page.getByText('Signed in as CI Alice', { exact: true }).waitFor();
   await page.locator('#start').click();
   await page.locator('#run-status').filter({ hasText: 'COMPLETED' }).waitFor({ timeout: 120_000 });
   assert.match(await page.locator('#run-result').innerText(), /auto_approved/);
-  await page.locator('#token').fill('');
   await page.screenshot({ path: artifacts + '/screenshots/workflows.png', fullPage: true });
 
   console.log('Checking actual Cruncher shell execution');
@@ -147,7 +197,7 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   console.log('Checking MCP against the running server');
   const mcp = new Client({ name: 'hoverseer-smoke', version: '1.0.0' });
   await mcp.connect(new StreamableHTTPClientTransport(new URL('/mcp', api), {
-    requestInit: { headers: auth },
+    requestInit: { headers: alice.headers },
   }));
   try {
     assert.ok((await mcp.listTools()).tools.some(tool => tool.name === 'start_refund_review'));
@@ -171,7 +221,7 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   const transport = new RestTransportFactory({
     fetchImpl(url, init) {
       const headers = new Headers(init?.headers);
-      headers.set('Authorization', auth.authorization);
+      headers.set('Authorization', alice.headers.authorization);
       return fetch(url, { ...init, headers });
     },
   });
@@ -189,13 +239,24 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   });
   assert.equal(taskResult.artifacts[0].parts[0].content.value.status, 'auto_approved');
   results.push({ label: 'A2A', status: 'COMPLETED' });
+  assert.equal((await fetch(api + '/a2a/tasks/' + task.id, {
+    headers: { ...bob.headers, 'A2A-Version': '1.0' },
+  })).status, 404);
+  const bobMcp = new Client({ name: 'hoverseer-smoke-bob', version: '1.0.0' });
+  await bobMcp.connect(new StreamableHTTPClientTransport(new URL('/mcp', api), { requestInit: { headers: bob.headers } }));
+  try {
+    const deniedRun = await bobMcp.callTool({ name: 'get_run', arguments: { workflowId: aliceRun.workflowId } });
+    assert.equal(deniedRun.isError, true);
+    assert.equal(deniedRun.structuredContent.status, 404);
+  } finally {
+    await bobMcp.close();
+  }
+  const signedOut = await bobContext.request.post(hitly + '/api/auth/sign-out', { headers: { origin: hitly } });
+  assert.ok(signedOut.ok(), 'HITLy sign-out');
+  assert.equal((await bobContext.request.get(api + '/v1/me')).status(), 401);
+  assert.equal((await fetch(api + '/v1/me', { headers: bob.headers })).status, 401);
 
   console.log('Provisioning a real local HITLy reviewer and Temporal project');
-  const signup = await context.request.post(hitly + '/api/auth/sign-up/email', {
-    headers: { origin: hitly },
-    data: { name: 'CI Reviewer', email: 'ci-reviewer@example.com', password: 'Smoke-' + randomUUID() },
-  });
-  assert.ok(signup.ok(), 'HITLy signup: HTTP ' + signup.status());
   await page.goto(hitly + '/projects', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.locator('dialog input[name="name"]').fill('Hoverseer smoke');

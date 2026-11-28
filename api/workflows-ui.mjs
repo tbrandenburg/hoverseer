@@ -20,11 +20,13 @@ function attribute(value) {
 }
 
 export function installWorkflowsUi(app, {
+  hitlyUrl = 'http://localhost:3001',
   studioUrl = 'http://localhost:3000',
   temporalUrl = 'http://localhost:8233',
   namespace = 'default',
 } = {}) {
   const page = html
+    .replace('data-hitly=""', () => `data-hitly="${attribute(browserUrl(hitlyUrl))}"`)
     .replace('data-studio=""', () => `data-studio="${attribute(browserUrl(studioUrl))}"`)
     .replace('data-temporal=""', () => `data-temporal="${attribute(browserUrl(temporalUrl))}"`)
     .replace('data-namespace=""', () => `data-namespace="${attribute(namespace)}"`);
@@ -32,6 +34,7 @@ export function installWorkflowsUi(app, {
   const options = { schema: { hide: true } };
   app.get('/workflows', options, (_request, reply) => reply
     .header('Content-Security-Policy', "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+    .header('Cache-Control', 'no-store')
     .header('X-Content-Type-Options', 'nosniff')
     .type('text/html; charset=utf-8')
     .send(page));

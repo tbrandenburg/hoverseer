@@ -39,7 +39,7 @@ function sendRunError(request, reply, cause) {
 }
 
 export async function buildServer({
-  client, storageDir, catalogFile, token, logger = false, publicOrigin = 'http://localhost:8081', ui,
+  client, storageDir, catalogFile, token, sessionUrl, logger = false, publicOrigin = 'http://localhost:8081', ui,
 }) {
   const catalog = await loadCatalog(catalogFile, storageDir);
   const origin = new URL(publicOrigin);
@@ -47,8 +47,10 @@ export async function buildServer({
     throw new Error('HOVERSEER_PUBLIC_URL must be an HTTP(S) origin without a path');
   }
   const app = Fastify({ logger, bodyLimit: 1024 * 1024 });
-  const check = accessCheck(token);
-  const auth = fastifyAuth(check);
+  app.decorateRequest('principal', null);
+  const check = accessCheck(token, { sessionUrl, origin: origin.origin });
+  const auth = fastifyAuth(check, { allowCookie: true });
+  const bearerOnly = fastifyAuth(check);
   const runs = createRuns(client);
   app.removeContentTypeParser('text/plain');
 
@@ -76,6 +78,8 @@ export async function buildServer({
       response: { 200: { type: 'object', additionalProperties: true } },
     },
   }, async () => app.swagger());
+
+  app.get('/v1/me', { onRequest: auth, schema: { hide: true } }, async request => request.principal);
 
   app.get('/v1/workflows', {
     schema: {
@@ -120,7 +124,7 @@ export async function buildServer({
         },
         response: {
           202: { ...started, headers: { Location: { type: 'string', description: 'Status URL for this execution' } } },
-          400: error, 401: error, 409: error, 413: error, 415: error, 503: error,
+          400: error, 401: error, 403: error, 409: error, 413: error, 415: error, 503: error,
         },
       },
     }, async (request, reply) => {
@@ -128,7 +132,7 @@ export async function buildServer({
         return reply.code(400).send({ message: 'A JSON request body is required' });
       }
       try {
-        const result = await runs.start(workflow, request.body, request.headers['idempotency-key']);
+        const result = await runs.start(workflow, request.body, request.headers['idempotency-key'], request.principal);
         return reply.header('Location', result.statusUrl).code(202).send(result);
       } catch (cause) {
         return sendRunError(request, reply, cause);
@@ -151,14 +155,14 @@ export async function buildServer({
     },
   }, async (request, reply) => {
     try {
-      return await runs.get(request.params.workflowId);
+      return await runs.get(request.params.workflowId, request.principal);
     } catch (cause) {
       return sendRunError(request, reply, cause);
     }
   });
 
   installWorkflowsUi(app, ui);
-  installMcp(app, { catalog, runs, auth, hostname: origin.hostname });
+  installMcp(app, { catalog, runs, auth: bearerOnly, hostname: origin.hostname });
   await installA2a(app, { catalog, runs, check, origin: origin.origin });
 
   return app;

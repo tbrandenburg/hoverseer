@@ -7,11 +7,12 @@
   <link rel="stylesheet" href="/workflows/style.css">
   <script type="module" src="/workflows/app.mjs"></script>
 </head>
-<body data-studio="" data-temporal="" data-namespace="">
+<body data-hitly="" data-studio="" data-temporal="" data-namespace="">
   <header class="topbar">
     <div class="topbar-inner">
       <p class="brand">Hoverseer</p>
       <nav aria-label="Workspace links">
+        <a id="account-link">HITLy account</a>
         <a id="studio-link">Studio</a>
         <a id="temporal-link">Temporal</a>
         <a href="/openapi.json">OpenAPI</a>
@@ -21,7 +22,9 @@
   <main>
     <h1>Workflows</h1>
     <p class="lede">Select a managed workflow, supply its inputs, and follow its run.</p>
-    <div class="workspace">
+    <p id="identity" class="lede" role="status">Checking your HITLy session…</p>
+    <p id="sign-in" class="lede" hidden><a id="login-link">Sign in with HITLy</a>, then return to Workflows.</p>
+    <div id="workspace" class="workspace" hidden>
       <aside class="catalog" aria-label="Managed workflows">
         <h2>Managed workflows</h2>
         <p id="catalog-status" role="status">Loading workflows…</p>
@@ -47,10 +50,6 @@
             </label>
           </fieldset>
           <div class="run-controls">
-            <label>
-              Workflow API token
-              <input id="token" type="password" autocomplete="off" required>
-            </label>
             <button id="start" type="submit">Run workflow</button>
           </div>
           <p id="request-status" role="status"></p>

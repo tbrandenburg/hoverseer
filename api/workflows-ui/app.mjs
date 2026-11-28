@@ -55,7 +55,9 @@ function fieldControl(property, required) {
 
 function setup() {
   const find = id => document.getElementById(id);
-  const { studio, temporal, namespace } = document.body.dataset;
+  const { hitly, studio, temporal, namespace } = document.body.dataset;
+  find('account-link').href = hitly;
+  find('login-link').href = joinedUrl(hitly, 'login');
   find('studio-link').href = studio;
   find('temporal-link').href = temporal;
   const catalog = find('catalog');
@@ -119,9 +121,9 @@ function setup() {
     showInputMode(rawMode.checked);
   });
 
-  async function poll(run, token, signal) {
+  async function poll(run, signal) {
     try {
-      const info = await getJson(run.statusUrl, { headers: { authorization: `Bearer ${token}` }, signal });
+      const info = await getJson(run.statusUrl, { signal });
       if (signal.aborted) return;
       find('run-status').textContent = info.status;
       if (Object.hasOwn(info, 'result')) {
@@ -131,7 +133,7 @@ function setup() {
       }
       if (info.status === 'RUNNING') {
         setTimeout(() => {
-          if (!signal.aborted) void poll(run, token, signal);
+          if (!signal.aborted) void poll(run, signal);
         }, 2000);
       }
     } catch (error) {
@@ -150,11 +152,6 @@ function setup() {
       return;
     }
     const workflow = selection;
-    const token = find('token').value.trim();
-    if (!token) {
-      requestStatus.textContent = 'Enter the workflow API token.';
-      return;
-    }
     if (pending?.body !== body) {
       const key = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
       pending = { body, key };
@@ -167,7 +164,6 @@ function setup() {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${token}`,
           'idempotency-key': pending.key,
         },
         body,
@@ -182,7 +178,7 @@ function setup() {
       find('run').hidden = false;
       activeRun?.abort();
       activeRun = new AbortController();
-      void poll(run, token, activeRun.signal);
+      void poll(run, activeRun.signal);
     } catch (error) {
       requestStatus.textContent = error.message;
     } finally {
@@ -218,7 +214,20 @@ function setup() {
     }
   }
 
-  void loadCatalog();
+  async function authenticate() {
+    try {
+      const identity = await getJson('/v1/me');
+      if (identity.kind !== 'user') throw new Error('Sign in with a HITLy user account.');
+      find('identity').textContent = `Signed in as ${identity.name}`;
+      find('workspace').hidden = false;
+      await loadCatalog();
+    } catch (error) {
+      find('identity').textContent = error.message;
+      find('sign-in').hidden = false;
+    }
+  }
+
+  void authenticate();
 }
 
 if (typeof document !== 'undefined') setup();
