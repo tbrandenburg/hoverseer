@@ -7,3 +7,4 @@ cruncher/.env.infisical
 
 # Disposable full-stack smoke artifacts
 /smoke-artifacts/
+/workspace-data/

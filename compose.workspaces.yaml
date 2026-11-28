@@ -1,0 +1,73 @@
+# Optional static workspace execution overlay. Copy one worker pair for each
+# additional namespace; no Docker socket, control plane or auto-provisioning.
+services:
+  api:
+    environment:
+      HOVERSEER_WORKSPACE_NAMESPACES: "${HOVERSEER_WORKSPACE_NAMESPACES:?Set the workspace namespace JSON mapping}"
+      HOVERSEER_WORKSPACE_ROOT: /workspace-data
+    volumes:
+      - ./workspace-data:/workspace-data:ro
+  zigflow-a: &zigflow-workspace
+    image: ghcr.io/zigflow/zigflow:0.18.1
+    command: [run, --disable-telemetry, --dir, /workflows, --glob, "*/workflow.yaml"]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: workspace-a
+      WORKFLOW_FILE: ""
+    volumes:
+      - ./workspace-data/workspace-a:/workflows:ro
+    depends_on:
+      temporal:
+        condition: service_healthy
+    restart: on-failure
+  zigflow-b:
+    <<: *zigflow-workspace
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: workspace-b
+      WORKFLOW_FILE: ""
+    volumes:
+      - ./workspace-data/workspace-b:/workflows:ro
+  zigflow-team:
+    <<: *zigflow-workspace
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: workspace-team
+      WORKFLOW_FILE: ""
+    volumes:
+      - ./workspace-data/workspace-team:/workflows:ro
+  cruncher-a: &cruncher-workspace
+    image: hoverseer-cruncher:local
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: workspace-a
+      HITLY_PROJECT_ID: ${WORKSPACE_A_HITLY_PROJECT_ID:-}
+      HITLY_API_KEY: ${WORKSPACE_A_HITLY_API_KEY:-}
+    volumes:
+      - cruncher-a-data:/var/lib/hoverseer/workspaces
+    depends_on:
+      temporal:
+        condition: service_healthy
+    restart: on-failure
+  cruncher-b:
+    <<: *cruncher-workspace
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: workspace-b
+      HITLY_PROJECT_ID: ${WORKSPACE_B_HITLY_PROJECT_ID:-}
+      HITLY_API_KEY: ${WORKSPACE_B_HITLY_API_KEY:-}
+    volumes:
+      - cruncher-b-data:/var/lib/hoverseer/workspaces
+  cruncher-team:
+    <<: *cruncher-workspace
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: workspace-team
+      HITLY_PROJECT_ID: ${WORKSPACE_TEAM_HITLY_PROJECT_ID:-}
+      HITLY_API_KEY: ${WORKSPACE_TEAM_HITLY_API_KEY:-}
+    volumes:
+      - cruncher-team-data:/var/lib/hoverseer/workspaces
+volumes:
+  cruncher-a-data:
+  cruncher-b-data:
+  cruncher-team-data:

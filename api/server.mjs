@@ -3,7 +3,8 @@ import swagger from '@fastify/swagger';
 import { loadCatalog } from './catalog.mjs';
 import { accessCheck, bearerAuth, fastifyAuth } from './auth.mjs';
 import { withWorkspace } from './workspace.mjs';
-import { createRuns, RunError, workflowIdPattern } from './runs.mjs';
+import { RunError, workflowIdPattern } from './runs.mjs';
+import { routeRuns } from './execution.mjs';
 import { installWorkflowsUi } from './workflows-ui.mjs';
 import { installMcp } from './mcp.mjs';
 import { a2aOpenApiPaths, installA2a } from './a2a.mjs';
@@ -40,7 +41,7 @@ function sendRunError(request, reply, cause) {
 }
 
 export async function buildServer({
-  client, storageDir, catalogFile, token, sessionUrl, logger = false, publicOrigin = 'http://localhost:8081', ui,
+  client, storageDir, catalogFile, token, sessionUrl, workspaceExecutions = null, logger = false, publicOrigin = 'http://localhost:8081', ui,
 }) {
   const catalog = await loadCatalog(catalogFile, storageDir);
   const origin = new URL(publicOrigin);
@@ -50,10 +51,17 @@ export async function buildServer({
   const app = Fastify({ logger, bodyLimit: 1024 * 1024 });
   app.decorateRequest('principal', null);
   const identity = accessCheck(token, { sessionUrl, origin: origin.origin, hitlyOrigin: ui?.hitlyUrl });
-  const check = withWorkspace(identity, { sessionUrl, hitlyOrigin: ui?.hitlyUrl });
+  const membership = withWorkspace(identity, { sessionUrl, hitlyOrigin: ui?.hitlyUrl });
+  const runs = routeRuns(client, workspaceExecutions, ui?.namespace);
+  const check = async (headers, options) => {
+    const result = await membership(headers, options);
+    if (!result.failure && runs.namespace(result.principal) === null) {
+      return { failure: { status: 403, message: 'Workspace execution is not configured' } };
+    }
+    return result;
+  };
   const auth = fastifyAuth(check, { allowCookie: true });
   const bearerOnly = fastifyAuth(check);
-  const runs = createRuns(client);
   app.removeContentTypeParser('text/plain');
 
   await app.register(swagger, {
@@ -81,7 +89,11 @@ export async function buildServer({
     },
   }, async () => app.swagger());
 
-  app.get('/v1/me', { onRequest: auth, schema: { hide: true } }, async request => request.principal);
+  app.get('/v1/me', { onRequest: fastifyAuth(membership, { allowCookie: true }), schema: { hide: true } }, async request => ({
+    ...request.principal,
+    executionNamespace: runs.namespace(request.principal),
+    workspaceExecution: workspaceExecutions !== null,
+  }));
 
   app.get('/v1/workflows', {
     schema: {

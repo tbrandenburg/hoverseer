@@ -88,3 +88,37 @@ For Docker, configure the dashboard port and allowed hosts via `HOVERSEER_DASHBO
 - Seeding preserves workflow files already on the shared volume. The compatibility gateway stays available for those definitions. After their active runs finish, update their review steps to the example in [Add a human approval](AUTHORING.md#add-a-human-approval) and reload Zigflow. Keep the gateway running while any definitions still use its HTTP endpoint.
 
 Open Studio and Temporal Web on localhost through Compose or kubectl port forwarding.
+
+## Optional static workspace execution (Docker Compose)
+
+The original single-environment stack still works. For a trusted internal multi-workspace deployment, use the included [Compose overlay](../compose.workspaces.yaml). It provides three example worker pairs (two personal workspaces and a shared team); reuse or copy a pair when needed. It does not create resources dynamically.
+
+1. Start the regular stack with `./hoverseer init` and `./hoverseer docker up`. Create users/workspaces and memberships in HITLy. Obtain the actual workspace IDs from the authenticated Hoverseer `GET /v1/me`.
+2. Create the Temporal namespaces and copy the starter workflows into independent directories:
+
+   ```sh
+   for namespace in workspace-a workspace-b workspace-team; do
+     docker compose exec -T temporal temporal operator namespace create --namespace "$namespace"
+     mkdir -p "workspace-data/$namespace"
+     cp -R workflows/. "workspace-data/$namespace/"
+   done
+   ```
+
+   Run the copy only for new workspaces; do not overwrite edited workflows on upgrades.
+
+3. Add a one-to-one mapping to `.env` using the real HITLy workspace IDs, for example:
+
+   ```dotenv
+   HOVERSEER_WORKSPACE_NAMESPACES={"ws-real-alice":"workspace-a","ws-real-bob":"workspace-b","ws-real-team":"workspace-team"}
+   ```
+
+4. If approvals are required, create a separate HITLy project in each workspace, configure the corresponding Temporal namespace and address, and put that project's credentials into the workspace-specific `WORKSPACE_A_HITLY_PROJECT_ID` / `WORKSPACE_A_HITLY_API_KEY` (or B/TEAM) variables in `.env`. Missing keys disable approvals, not shell execution. Do not copy the default workspace's keys.
+5. Apply the overlay:
+
+   ```sh
+   docker compose -f compose.yaml -f compose.workspaces.yaml up -d
+   ```
+
+   Restart the matching Zigflow worker and API after changing a workspace's YAML or catalog, once its active executions have finished. Use the same two Compose files for logs, stop and teardown.
+
+The mapping must be explicit; unmapped user workspaces cannot start or read runs in overlay mode. The service token continues to use only the legacy default namespace. The public catalog's aliases and input schemas must match in each workspace; implementations and task queues can differ. Workspace directories and Cruncher volumes are separate, but the stock Studio and Temporal UI are still trusted/admin-only services, and Temporal namespaces alone are not a security sandbox. Edit the workspace files as an administrator for now. No user runs are migrated from the default namespace; finish them before enabling the overlay, and avoid reusing pre-upgrade idempotency keys. Kubernetes continues to use the original single-environment configuration.

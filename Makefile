@@ -48,6 +48,7 @@ lint-docker:
 		docker buildx build --check --build-arg BUILDKIT_DOCKERFILE_CHECK=error=true --file "$$dockerfile" .; \
 	done
 	POSTGRES_PASSWORD=checks-only BETTER_AUTH_SECRET=checks-only docker compose config --quiet
+	POSTGRES_PASSWORD=checks-only BETTER_AUTH_SECRET=checks-only HOVERSEER_WORKSPACE_NAMESPACES='{}' docker compose -f compose.yaml -f compose.workspaces.yaml config --quiet
 	POSTGRES_PASSWORD=checks-only BETTER_AUTH_SECRET=checks-only docker compose config --format json \
 		| grep -q '"WORKFLOW_FILE": ""' # Zigflow must not load the image's default /app/workflow.yaml
 
