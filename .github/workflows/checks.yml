@@ -68,7 +68,10 @@ jobs:
         if: always()
         run: |
           mkdir -p smoke-artifacts
-          if grep -q '^HOVERSEER_WORKSPACE_NAMESPACES=' .env 2>/dev/null; then
+          if grep -q '^INFISICAL_ENCRYPTION_KEY=' .env 2>/dev/null; then
+            docker compose -f compose.yaml -f compose.workspaces.yaml -f compose.infisical.yaml ps -a > smoke-artifacts/containers.txt 2>&1 || true
+            docker compose -f compose.yaml -f compose.workspaces.yaml -f compose.infisical.yaml logs --no-color > "$RUNNER_TEMP/hoverseer-compose.log" 2>&1 || true
+          elif grep -q '^HOVERSEER_WORKSPACE_NAMESPACES=' .env 2>/dev/null; then
             docker compose -f compose.yaml -f compose.workspaces.yaml ps -a > smoke-artifacts/containers.txt 2>&1 || true
             docker compose -f compose.yaml -f compose.workspaces.yaml logs --no-color > "$RUNNER_TEMP/hoverseer-compose.log" 2>&1 || true
           else
@@ -88,7 +91,9 @@ jobs:
       - name: Tear down test stack
         if: always()
         run: |
-          if grep -q '^HOVERSEER_WORKSPACE_NAMESPACES=' .env 2>/dev/null; then
+          if grep -q '^INFISICAL_ENCRYPTION_KEY=' .env 2>/dev/null; then
+            docker compose -f compose.yaml -f compose.workspaces.yaml -f compose.infisical.yaml down -v --remove-orphans
+          elif grep -q '^HOVERSEER_WORKSPACE_NAMESPACES=' .env 2>/dev/null; then
             docker compose -f compose.yaml -f compose.workspaces.yaml down -v --remove-orphans
           else
             docker compose down -v --remove-orphans

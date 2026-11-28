@@ -74,6 +74,9 @@ services:
       - ./workspace-data/workspace-team:/workflows:ro
   cruncher-a: &cruncher-workspace
     image: hoverseer-cruncher:local
+    env_file:
+      - path: ./cruncher/.env.infisical-a
+        required: false
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: workspace-a
@@ -87,6 +90,9 @@ services:
     restart: on-failure
   cruncher-b:
     <<: *cruncher-workspace
+    env_file:
+      - path: ./cruncher/.env.infisical-b
+        required: false
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: workspace-b
@@ -96,6 +102,9 @@ services:
       - cruncher-b-data:/var/lib/hoverseer/workspaces
   cruncher-team:
     <<: *cruncher-workspace
+    env_file:
+      - path: ./cruncher/.env.infisical-team
+        required: false
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: workspace-team

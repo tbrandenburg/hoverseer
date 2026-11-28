@@ -49,6 +49,7 @@ lint-docker:
 	done
 	POSTGRES_PASSWORD=checks-only BETTER_AUTH_SECRET=checks-only docker compose config --quiet
 	POSTGRES_PASSWORD=checks-only BETTER_AUTH_SECRET=checks-only HOVERSEER_WORKSPACE_NAMESPACES='{}' docker compose -f compose.yaml -f compose.workspaces.yaml config --quiet
+	POSTGRES_PASSWORD=checks-only BETTER_AUTH_SECRET=checks-only HOVERSEER_WORKSPACE_NAMESPACES='{}' INFISICAL_ENCRYPTION_KEY=checks-only INFISICAL_AUTH_SECRET=checks-only INFISICAL_DB_PASSWORD=checks-only docker compose -f compose.yaml -f compose.workspaces.yaml -f compose.infisical.yaml config --quiet
 	POSTGRES_PASSWORD=checks-only BETTER_AUTH_SECRET=checks-only docker compose config --format json \
 		| grep -q '"WORKFLOW_FILE": ""' # Zigflow must not load the image's default /app/workflow.yaml
 

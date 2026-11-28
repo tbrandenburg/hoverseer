@@ -1,0 +1,42 @@
+# Optional upstream Infisical stack. Existing external Infisical instances
+# work too: only the per-worker env files are needed in that case.
+services:
+  infisical:
+    image: infisical/infisical:v0.167.4
+    environment:
+      NODE_ENV: production
+      ENCRYPTION_KEY: ${INFISICAL_ENCRYPTION_KEY:?Set an Infisical encryption key}
+      AUTH_SECRET: ${INFISICAL_AUTH_SECRET:?Set an Infisical authentication secret}
+      DB_CONNECTION_URI: postgres://infisical:${INFISICAL_DB_PASSWORD:?Set an Infisical database password}@infisical-db:5432/infisical
+      REDIS_URL: redis://infisical-redis:6379
+      SITE_URL: ${HOVERSEER_INFISICAL_UI_URL:-http://localhost:8084}
+      TELEMETRY_ENABLED: "false"
+      DISABLE_UPDATE_CHECK: "true"
+    ports:
+      - "127.0.0.1:8084:8080"
+    depends_on:
+      infisical-db:
+        condition: service_healthy
+      infisical-redis:
+        condition: service_started
+    restart: on-failure
+  infisical-db:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: infisical
+      POSTGRES_DB: infisical
+      POSTGRES_PASSWORD: ${INFISICAL_DB_PASSWORD:?Set an Infisical database password}
+    volumes:
+      - infisical-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, infisical, -d, infisical]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  infisical-redis:
+    image: redis:7-alpine
+    volumes:
+      - infisical-redis-data:/data
+volumes:
+  infisical-db-data:
+  infisical-redis-data:
