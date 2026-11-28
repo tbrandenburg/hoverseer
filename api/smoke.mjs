@@ -261,12 +261,26 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   assert.equal((await fetch(api + '/v1/me', { headers: bob.headers })).status, 401);
 
   console.log('Provisioning a real local HITLy reviewer and Temporal project');
-  await page.goto(hitly + '/projects', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await page.goto(hitly + '/projects', { waitUntil: 'networkidle' });
+  const newProject = page.getByRole('button', { name: 'New project', exact: true });
+  const projectDialog = page.getByRole('dialog');
+  // Next.js can render the button before its React click handler is hydrated.
+  // Retry only opening the dialog (no server-side mutation), never creation.
+  try {
+    await eventually('HITLy project dialog', async () => {
+      if (await projectDialog.isVisible()) return true;
+      await newProject.click({ timeout: 5000 });
+      return projectDialog.isVisible();
+    }, 30_000);
+  } catch (error) {
+    await page.screenshot({ path: artifacts + '/screenshots/hitly-project-dialog-failure.png', fullPage: true });
+    throw error;
+  }
   await page.locator('dialog input[name="name"]').fill('Hoverseer smoke');
   await page.locator('dialog select[name="plugin"]').selectOption('temporal');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.waitForURL(/\/projects\/[^/]+\/config/);
+  await page.waitForLoadState('networkidle');
   const projectId = new URL(page.url()).pathname.split('/')[2];
   const config = await context.request.patch(hitly + '/api/v1/projects/' + projectId + '/config', {
     headers: { origin: hitly },
