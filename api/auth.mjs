@@ -10,7 +10,7 @@ const service = Object.freeze({ kind: 'service', id: 'legacy-service', name: 'Se
 
 // Cookie scope is the host, not the port. Forward only Better Auth's session
 // cookie, never arbitrary browser cookies or client-selected identity headers.
-function sessionCookie(header) {
+export function sessionCookie(header) {
   return typeof header === 'string' ? header.split(';').map(part => part.trim())
     .filter(part => /^(?:__Secure-)?better-auth\.session_token=/.test(part)).join('; ') : '';
 }

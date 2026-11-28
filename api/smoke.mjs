@@ -146,13 +146,90 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
     const bearer = await fetch(api + '/v1/me', { headers });
     assert.equal(bearer.status, 200);
     assert.equal((await bearer.json()).id, identity.id);
-    return { identity, headers };
+    assert.ok(identity.workspace?.id, 'Personal HITLy workspace');
+    assert.equal(identity.workspace.role, 'owner');
+    return { identity, headers: { ...headers, 'x-hitly-workspace-id': identity.workspace.id } };
   }
   const alice = await register(context, 'CI Alice', 'ci-alice@example.com');
   const bobContext = await browser.newContext();
   t.after(() => bobContext.close());
   const bob = await register(bobContext, 'CI Bob', 'ci-bob@example.com');
   assert.notEqual(alice.identity.id, bob.identity.id);
+  assert.notEqual(alice.identity.workspace.id, bob.identity.workspace.id);
+  console.log('Checking live personal and shared workspace memberships');
+  const teamContext = await browser.newContext();
+  t.after(() => teamContext.close());
+  const team = await register(teamContext, 'CI Team', 'ci-team@example.com');
+  const teamId = team.identity.workspace.id;
+  const teamPage = await teamContext.newPage();
+  teamPage.setDefaultTimeout(60_000);
+  await teamPage.goto(hitly + '/settings/team', { waitUntil: 'networkidle' });
+  // HITLy itself adds existing accounts to a workspace; no test SQL or mock grants.
+  for (const email of ['ci-alice@example.com', 'ci-bob@example.com']) {
+    await teamPage.getByPlaceholder('Invite email').fill(email);
+    await teamPage.getByRole('button', { name: 'Invite', exact: true }).click();
+    await teamPage.locator('li').filter({ hasText: email }).waitFor();
+  }
+  const inWorkspace = (user, id) => ({ ...user.headers, 'x-hitly-workspace-id': id });
+  const who = headers => fetch(api + '/v1/me', { headers });
+  for (const user of [alice, bob]) {
+    const member = await who(inWorkspace(user, teamId));
+    assert.equal(member.status, 200);
+    const identity = await member.json();
+    assert.equal(identity.workspace.id, teamId);
+    assert.equal(identity.workspace.role, 'member');
+    assert.equal((await who(inWorkspace(user, 'ws-forged'))).status, 403);
+  }
+  assert.equal((await who(inWorkspace(alice, bob.identity.workspace.id))).status, 403);
+  assert.equal((await who(inWorkspace(bob, alice.identity.workspace.id))).status, 403);
+  assert.equal((await fetch(api + '/v1/workflows/refund-review/runs',
+    post(refund, inWorkspace(alice, bob.identity.workspace.id)))).status, 403);
+  assert.equal((await fetch(api + '/mcp', { headers: inWorkspace(alice, bob.identity.workspace.id) })).status, 403);
+  assert.equal((await fetch(api + '/a2a/tasks/' + run.workflowId, {
+    headers: { ...inWorkspace(alice, bob.identity.workspace.id), 'A2A-Version': '1.0' },
+  })).status, 403);
+
+  // Real native HITLy workspace switching; Hoverseer reflects the selected workspace.
+  await page.goto(hitly + '/inbox', { waitUntil: 'networkidle' });
+  const switcher = page.getByRole('combobox', { name: 'Workspace', exact: true });
+  await switcher.locator('option[value="' + teamId + '"]').waitFor({ state: 'attached' });
+  await switcher.selectOption(teamId);
+  await eventually('HITLy selected team', async () => {
+    const r = await context.request.get(api + '/v1/me');
+    return r.ok() && (await r.json()).workspace.id === teamId;
+  });
+  await page.goto(api + '/workflows', { waitUntil: 'domcontentloaded' });
+  await page.locator('#workspace-name').filter({ hasText: team.identity.workspace.name }).waitFor();
+  await page.screenshot({ path: artifacts + '/screenshots/shared-workspace.png', fullPage: true });
+  await page.goto(hitly + '/inbox', { waitUntil: 'networkidle' });
+  await page.getByRole('combobox', { name: 'Workspace', exact: true }).selectOption(alice.identity.workspace.id);
+  await eventually('HITLy selected personal workspace', async () => {
+    const r = await context.request.get(api + '/v1/me');
+    return r.ok() && (await r.json()).workspace.id === alice.identity.workspace.id;
+  });
+
+  const teamKey = randomUUID();
+  const personal = await json(api + '/v1/workflows/refund-review/runs', post(refund, {
+    ...alice.headers, 'idempotency-key': teamKey,
+  }), 202);
+  const shared = await json(api + '/v1/workflows/refund-review/runs', post(refund, {
+    ...inWorkspace(alice, teamId), 'idempotency-key': teamKey,
+  }), 202);
+  assert.notEqual(personal.workflowId, shared.workflowId);
+  assert.equal((await fetch(api + shared.statusUrl, { headers: alice.headers })).status, 404);
+  assert.equal((await fetch(api + shared.statusUrl, { headers: inWorkspace(alice, teamId) })).status, 200);
+  assert.equal((await fetch(api + shared.statusUrl, { headers: inWorkspace(bob, teamId) })).status, 404);
+  await complete('team context execution', shared, 'auto_approved');
+
+  const bobTeam = await json(api + '/v1/workflows/refund-review/runs', post(refund, inWorkspace(bob, teamId)), 202);
+  await complete('Bob team context execution', bobTeam, 'auto_approved');
+  // Removing membership in HITLy must revoke access on the very next request.
+  await teamPage.locator('li').filter({ hasText: 'ci-bob@example.com' })
+    .getByRole('button', { name: 'Remove', exact: true }).click();
+  await teamPage.locator('li').filter({ hasText: 'ci-bob@example.com' }).waitFor({ state: 'detached' });
+  assert.equal((await who(inWorkspace(bob, teamId))).status, 403);
+  assert.equal((await fetch(api + bobTeam.statusUrl, { headers: inWorkspace(bob, teamId) })).status, 403);
+  assert.equal((await who(bob.headers)).status, 200);
   const retryKey = randomUUID();
   const aliceRun = await json(api + '/v1/workflows/refund-review/runs', post(refund, {
     ...alice.headers, 'idempotency-key': retryKey,

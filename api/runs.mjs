@@ -27,7 +27,8 @@ export function createRuns(client) {
     try {
       const run = await temporal(() => workflows.getHandle(workflowId).describe());
       if (typeof run.memo?.hoverseerWorkflow === 'string'
-          && (principal.kind === 'service' || run.memo.hoverseerUserId === principal.id)) return run;
+          && (principal.kind === 'service' || (run.memo.hoverseerUserId === principal.id
+            && (run.memo.hoverseerWorkspaceId === undefined || run.memo.hoverseerWorkspaceId === principal.workspace.id)))) return run;
     } catch (cause) {
       if (!(cause instanceof WorkflowNotFoundError)) throw unavailable(cause);
     }
@@ -36,8 +37,9 @@ export function createRuns(client) {
 
   async function start(workflow, input, idempotencyKey, principal) {
     const key = idempotencyKey ?? randomUUID();
-    // Preserve legacy service IDs. Users have independent retry identities.
-    const scope = principal.kind === 'user' ? ['user', principal.id, workflow.name, key] : [workflow.name, key];
+    // Preserve legacy service IDs. User retries are scoped to their verified workspace.
+    const scope = principal.kind === 'user'
+      ? ['user', principal.id, principal.workspace.id, workflow.name, key] : [workflow.name, key];
     const workflowId = `hoverseer-${hash(JSON.stringify(scope)).slice(0, 48)}`;
     const requestHash = hash(stringify(input));
     let runId;
@@ -49,7 +51,9 @@ export function createRuns(client) {
         workflowIdReusePolicy: 'REJECT_DUPLICATE',
         memo: {
           hoverseerWorkflow: workflow.name, hoverseerRequestHash: requestHash,
-          ...(principal.kind === 'user' && { hoverseerUserId: principal.id }),
+          ...(principal.kind === 'user' && {
+            hoverseerUserId: principal.id, hoverseerWorkspaceId: principal.workspace.id,
+          }),
         },
       }));
       runId = run.firstExecutionRunId;

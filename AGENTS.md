@@ -9,3 +9,5 @@
 - Never put real credentials in tests, logs, screenshots or artifacts. Use a fresh disposable stack with generated test-only credentials.
 - No direct changes to main or automatic merge without the maintainer's approval.
 - Before adding multiuser functionality, preserve the current behavior. Add explicit negative authorization/isolation tests alongside the relevant change.
+
+- Apply KISS and YAGNI: reuse HITLy's workspace switcher and live membership API; add configuration and infrastructure only when an actual feature requires them.
