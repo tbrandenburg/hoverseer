@@ -5,7 +5,7 @@ import { accessCheck } from './auth.mjs';
 test('legacy service credential and verified HITLy sessions remain distinct', async () => {
   const calls = [];
   const check = accessCheck('service-secret', {
-    sessionUrl: 'http://hotl:3001', origin: 'http://localhost:8081',
+    sessionUrl: 'http://hotl:3001', origin: 'http://localhost:8081', hitlyOrigin: 'http://localhost:3001',
     async fetchImpl(url, options) {
       calls.push({ url, options });
       if (options.headers.authorization === 'Bearer invalid') return Response.json(null);
@@ -23,9 +23,11 @@ test('legacy service credential and verified HITLy sessions remain distinct', as
   const session = await check({ ...headers, origin: 'http://localhost:8081' }, { allowCookie: true, method: 'POST' });
   assert.deepEqual(session.principal, { kind: 'user', id: 'alice', name: 'Alice' });
   assert.equal(calls.at(-1).options.headers.cookie, 'better-auth.session_token=test-session');
+  assert.equal(calls.at(-1).options.headers.origin, 'http://localhost:3001');
   assert.equal(calls.at(-1).options.redirect, 'error');
   assert.equal((await check({ ...headers, authorization: 'Bearer invalid' }, { allowCookie: true })).failure.status, 401);
-  assert.equal((await check({ authorization: 'Bearer session-token' })).principal.id, 'alice');
+  assert.equal((await check({ authorization: 'Bearer session-token', origin: 'https://untrusted.example' })).principal.id, 'alice');
+  assert.equal(calls.at(-1).options.headers.origin, 'http://localhost:3001');
 });
 
 test('identity lookup fails closed when HITLy is unavailable or malformed', async () => {

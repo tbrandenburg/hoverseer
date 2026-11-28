@@ -15,12 +15,14 @@ function sessionCookie(header) {
     .filter(part => /^(?:__Secure-)?better-auth\.session_token=/.test(part)).join('; ') : '';
 }
 
-export function accessCheck(token, { sessionUrl, origin, fetchImpl = fetch } = {}) {
+export function accessCheck(token, { sessionUrl, origin, hitlyOrigin = 'http://localhost:3001', fetchImpl = fetch } = {}) {
   const expected = token ? digest(token) : undefined;
   const endpoint = sessionUrl ? new URL('/api/auth/get-session?disableCookieCache=true&disableRefresh=true', sessionUrl) : undefined;
   if (endpoint && (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password)) {
     throw new Error('HITLY_URL must be an HTTP(S) URL without credentials');
   }
+
+  const identityOrigin = new URL(hitlyOrigin).origin;
 
   return async (headers, { allowCookie = false, method = 'GET' } = {}) => {
     const authorization = headers.authorization;
@@ -40,7 +42,10 @@ export function accessCheck(token, { sessionUrl, origin, fetchImpl = fetch } = {
 
     try {
       const response = await fetchImpl(endpoint, {
-        headers: supplied ? { authorization: 'Bearer ' + supplied } : { cookie },
+        // Use the configured HITLy origin, not a caller-controlled header.
+        // HITLy's native-client origin fallback clones the Next.js request;
+        // the pinned upstream fails there on origin-less requests.
+        headers: { origin: identityOrigin, ...(supplied ? { authorization: 'Bearer ' + supplied } : { cookie }) },
         redirect: 'error',
         cache: 'no-store',
         signal: AbortSignal.timeout(5000),

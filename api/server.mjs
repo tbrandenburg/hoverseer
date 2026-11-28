@@ -48,7 +48,7 @@ export async function buildServer({
   }
   const app = Fastify({ logger, bodyLimit: 1024 * 1024 });
   app.decorateRequest('principal', null);
-  const check = accessCheck(token, { sessionUrl, origin: origin.origin });
+  const check = accessCheck(token, { sessionUrl, origin: origin.origin, hitlyOrigin: ui?.hitlyUrl });
   const auth = fastifyAuth(check, { allowCookie: true });
   const bearerOnly = fastifyAuth(check);
   const runs = createRuns(client);
