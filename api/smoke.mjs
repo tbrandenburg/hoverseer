@@ -9,6 +9,7 @@ import { AgentCard, Role, TaskState } from '@a2a-js/sdk';
 import { ClientFactory, RestTransportFactory } from '@a2a-js/sdk/client';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { chromium } from 'playwright';
+import { configureInfisicalServer, provisionInfisical } from '../tests/smoke/infisical.mjs';
 
 const exec = promisify(execFile);
 const api = 'http://localhost:8081';
@@ -642,4 +643,99 @@ test('real Hoverseer stack', { timeout: 15 * 60_000 }, async t => {
   });
   assert.equal(revokedStudioSession.status(), 200);
   assert.equal((await bobContext.request.get(studioB + definitionPath)).status(), 401);
+
+  console.log('Checking live Infisical credentials for personal and team workspaces');
+  // Give Bob and the team their own real HITLy projects, rather than sharing
+  // Alice's approval key. All setup uses HITLy's existing browser and API.
+  const bobAgain = await bobContext.request.post(hitly + '/api/auth/sign-in/email', {
+    headers: { origin: hitly }, data: { email: 'ci-bob@example.com', password: bob.password },
+  });
+  assert.ok(bobAgain.ok(), 'Bob signs in for credential tests');
+  const bobAgainToken = bobAgain.headers()['set-auth-token'] ?? (await bobAgain.json()).token;
+  assert.ok(bobAgainToken);
+  const bobVaultHeaders = { authorization: 'Bearer ' + bobAgainToken, 'x-hitly-workspace-id': bob.identity.workspace.id };
+  async function createVaultApproval(ctx, namespace) {
+    const editor = await ctx.newPage();
+    editor.setDefaultTimeout(60_000);
+    await editor.goto(hitly + '/projects', { waitUntil: 'networkidle' });
+    const button = editor.getByRole('button', { name: 'New project', exact: true });
+    const dialog = editor.getByRole('dialog');
+    await eventually('HITLy credential project dialog', async () => {
+      if (await dialog.isVisible()) return true;
+      await button.click({ timeout: 5000 });
+      return dialog.isVisible();
+    }, 30_000);
+    await editor.locator('dialog input[name="name"]').fill('Vault ' + namespace);
+    await editor.locator('dialog select[name="plugin"]').selectOption('temporal');
+    await editor.getByRole('button', { name: 'Create', exact: true }).click();
+    await editor.waitForURL(/\/projects\/[^/]+\/config/);
+    await editor.waitForLoadState('networkidle');
+    const projectId = new URL(editor.url()).pathname.split('/')[2];
+    const cfg = await ctx.request.patch(hitly + '/api/v1/projects/' + projectId + '/config', {
+      headers: { origin: hitly },
+      data: { name: 'Vault ' + namespace, address: 'temporal:7233', baseUrl: 'temporal:7233',
+        namespace, taskQueue: 'articleReview', sla: '10' },
+    });
+    assert.ok(cfg.ok(), 'Vault HITLy project configuration');
+    await editor.getByRole('button', { name: 'Create key', exact: true }).click();
+    const notice = editor.getByText('Copy now — this is shown once:', { exact: false });
+    await notice.waitFor();
+    const apiKey = (await notice.innerText()).match(/hitly_[A-Za-z0-9_-]+/)?.[0];
+    assert.ok(apiKey, 'Vault HITLy project API key');
+    await editor.close();
+    return { projectId, apiKey };
+  }
+  const credentials = {
+    a: { projectId, apiKey },
+    b: await createVaultApproval(bobContext, 'workspace-b'),
+    team: await createVaultApproval(teamContext, 'workspace-team'),
+  };
+  await configureInfisicalServer();
+  const vaultOverlay = [...overlay, '-f', 'compose.infisical.yaml'];
+  await compose(...vaultOverlay, 'up', '-d', 'infisical');
+  await eventually('Infisical', async () => (await fetch('http://localhost:8084/api/status', {
+    signal: AbortSignal.timeout(5000),
+  })).ok, 240_000);
+  await provisionInfisical(credentials);
+  // Remove direct approval keys. Success now requires live SDK authentication
+  // and a secret read in the actual worker container.
+  const clear = Object.fromEntries(['A', 'B', 'TEAM'].flatMap(suffix => [
+    ['WORKSPACE_' + suffix + '_HITLY_PROJECT_ID', ''],
+    ['WORKSPACE_' + suffix + '_HITLY_API_KEY', ''],
+  ]));
+  Object.assign(process.env, clear);
+  const directEnv = (await readFile('.env', 'utf8')).split('\n')
+    .filter(line => !Object.keys(clear).some(key => line.startsWith(key + '='))).join('\n');
+  await writeFile('.env', directEnv + '\n', { mode: 0o600 });
+  await compose(...vaultOverlay, 'up', '-d', '--no-deps', '--force-recreate', 'cruncher-a', 'cruncher-b', 'cruncher-team');
+
+  for (const [suffix, namespace, headers, reviewer] of [
+    ['a', 'workspace-a', alice.headers, context],
+    ['b', 'workspace-b', bobVaultHeaders, bobContext],
+    ['team', 'workspace-team', teamHeaders, teamContext],
+  ]) {
+    const secret = credentials[suffix];
+    const run = await mappedStart(headers, 'article-review', { headline: 'Infisical ' + suffix, draft: 'Vault smoke approval.' });
+    const approval = await eventually('Infisical approval ' + suffix, async () => {
+      const r = await fetch(hitly + '/api/v1/approvals/by-run-id?plugin=temporal&runId=' + encodeURIComponent(run.workflowId), {
+        headers: { authorization: 'Bearer ' + secret.apiKey }, signal: AbortSignal.timeout(15_000),
+      });
+      if (r.status === 404) return null;
+      assert.equal(r.status, 200);
+      return r.json();
+    });
+    const decision = await reviewer.request.post(hitly + '/api/v1/approvals/' + approval.id + '/decide', {
+      headers: { origin: hitly }, data: { decision: 'accept' },
+    });
+    assert.ok(decision.ok(), 'Vault approval decision');
+    assert.ok(!(await decision.json()).resumeError);
+    await complete('Infisical approval ' + suffix, run, 'ready_to_publish', headers);
+    const history = await exec('docker', ['compose', 'exec', '-T', 'temporal', 'temporal', 'workflow', 'show',
+      '--namespace', namespace, '--workflow-id', run.workflowId, '--output', 'json'],
+    { timeout: 30_000, maxBuffer: 8 * 1024 * 1024 });
+    for (const value of Object.values(credentials).flatMap(item => [item.projectId, item.apiKey])) {
+      assert.ok(!history.stdout.includes(value) && !history.stdout.includes(Buffer.from(value).toString('base64')),
+        'Approval credential must not appear in Temporal history');
+    }
+  }
 });

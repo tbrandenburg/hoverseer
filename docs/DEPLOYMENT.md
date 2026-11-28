@@ -79,7 +79,7 @@ For Docker, configure the dashboard port and allowed hosts via `HOVERSEER_DASHBO
      kubectl apply --server-side -f -
    ```
 
-4. Run `docker compose up -d --no-deps --force-recreate cruncher` or `kubectl -n hoverseer rollout restart deployment/cruncher` to pick up the settings and after changing either HITLy secret. Cruncher reads both keys before it starts polling Temporal. Authentication or lookup failures stop worker startup. The compatibility gateway still uses `.env` for any legacy workflows that call it.
+4. Run `docker compose up -d --no-deps --force-recreate cruncher` or `kubectl -n hoverseer rollout restart deployment/cruncher` to pick up the settings and after changing either HITLy secret. Cruncher verifies both keys before it starts polling Temporal, then resolves fresh credentials inside each approval activity. Authentication or lookup failures stop worker startup; a later lookup failure fails the activity rather than falling back to direct credentials. The compatibility gateway still uses `.env` for any legacy workflows that call it.
 
 ### Upgrade existing deployments
 
@@ -123,3 +123,28 @@ The original single-environment stack still works. For a trusted internal multi-
    Restart the matching Zigflow worker and API after changing a workspace's YAML or catalog, once its active executions have finished. Use the same two Compose files for logs, stop and teardown.
 
 The mapping must be explicit; unmapped user workspaces cannot start or read runs in overlay mode. The service token continues to use only the legacy default namespace. The public catalog's aliases and input schemas must match in each workspace; implementations and task queues can differ. Workspace directories and Cruncher volumes are separate. The overlay publishes protected Studio instances on localhost ports 3002, 3003 and 3004, unpublishes the legacy Studio, and points the shared Homepage's Studio link to Workflows. Sign in to HITLy, switch workspaces there, then use Edit in Studio from Workflows. Each Studio checks live membership for its own fixed namespace on every application request (including its API), requires same-origin writes, and mounts only that workspace's directory. All workspace members can author workflows in this trusted-team MVP. To add a workspace, copy its Studio and worker services and extend the namespace and Studio URL mappings; keep Studio's `ORIGIN` and the advertised URL identical, on the same hostname as HITLy. The administrator still reloads Zigflow and the API after edits, and maintains the shared public workflow contract. Temporal UI remains trusted/admin-only and Temporal namespaces alone are not a security sandbox. No user runs are migrated from the default namespace; finish them before enabling the overlay, and avoid reusing pre-upgrade idempotency keys. Kubernetes continues to use the original single-environment configuration.
+
+### Workspace credentials (optional Infisical)
+
+Use a single existing Infisical installation, or the optional `compose.infisical.yaml` overlay (pinned upstream server, its PostgreSQL database and Redis). Generate independent server secrets, using `openssl rand -hex 16` for `INFISICAL_ENCRYPTION_KEY`, `openssl rand -base64 32` for `INFISICAL_AUTH_SECRET`, and `openssl rand -hex 32` for `INFISICAL_DB_PASSWORD`. Put those three values in the private `.env` file. Start only the optional vault with:
+
+```sh
+docker compose -f compose.yaml -f compose.workspaces.yaml -f compose.infisical.yaml up -d infisical
+```
+
+Open http://localhost:8084, complete the instance administrator setup immediately and keep it on a trusted network. For each personal or shared workspace, create a **distinct Infisical secret project**, give only its corresponding users access in Infisical, and create a distinct Universal Auth machine identity with the project Viewer role and no organization-wide access. In its `prod` environment create `HITLY_PROJECT_ID` and `HITLY_API_KEY` for that workspace's separate HITLy approval project.
+
+Configure `cruncher/.env.infisical-a`, `cruncher/.env.infisical-b` and `cruncher/.env.infisical-team` individually (mode 0600, ignored by Git). Do not put these files in the writable workflow directory. Example for A:
+
+```dotenv
+INFISICAL_SITE_URL=http://infisical:8080
+INFISICAL_PROJECT_ID=<only-workspace-a-project-id>
+INFISICAL_CLIENT_ID=<workspace-a-machine-client-id>
+INFISICAL_CLIENT_SECRET=<workspace-a-machine-client-secret>
+INFISICAL_ENVIRONMENT=prod
+INFISICAL_SECRET_PATH=/
+```
+
+Remove the corresponding direct `WORKSPACE_A_HITLY_PROJECT_ID` and `WORKSPACE_A_HITLY_API_KEY` values (likewise B/TEAM) and recreate the configured Cruncher services using the same Compose files. External Infisical installations only need the worker env files and a reachable HTTPS URL; no local vault overlay is needed.
+
+HITLy membership selects the execution workspace. Infisical independently enforces the machine identity's project grants. Personal credentials in the MVP belong to the personal workspace; team credentials are shared with trusted team authors. Infisical user accounts/project grants are administered manually, not synchronized with HITLy. There is deliberately no per-user override within a team execution, no user impersonation and no general secret-return activity. The existing approval connector consumes the two secret values in Cruncher, never in the workflow input or result. Shell execution is not a security sandbox: trusted authors with arbitrary shell access can potentially access credentials within their worker. Do not treat this arrangement as protection against malicious authors or administrators.
