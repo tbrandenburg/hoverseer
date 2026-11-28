@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -43,3 +44,42 @@ jobs:
             cruncher/package-lock.json
       - run: make install
       - run: make test
+
+  smoke:
+    name: Smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Install smoke dependencies
+        run: make smoke-install
+      - name: Build and start real stack
+        run: |
+          ./hoverseer init
+          ./hoverseer docker up
+      - name: Exercise full stack
+        run: make smoke
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          mkdir -p smoke-artifacts
+          docker compose ps -a > smoke-artifacts/containers.txt 2>&1 || true
+          docker compose logs --no-color > "$RUNNER_TEMP/hoverseer-compose.log" 2>&1 || true
+          node tests/smoke/redact.mjs "$RUNNER_TEMP/hoverseer-compose.log" smoke-artifacts/compose.log
+          rm -f "$RUNNER_TEMP/hoverseer-compose.log"
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-diagnostics
+          path: smoke-artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Tear down test stack
+        if: always()
+        run: docker compose down -v --remove-orphans

@@ -4,3 +4,6 @@ api/node_modules/
 cruncher/node_modules/
 cruncher/.env.infisical
 .workspaces/
+
+# Disposable full-stack smoke artifacts
+/smoke-artifacts/

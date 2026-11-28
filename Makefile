@@ -2,7 +2,7 @@ SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
 
-.PHONY: help install check lint lint-code lint-docker lint-kubernetes format test test-api test-cruncher
+.PHONY: help install check lint lint-code lint-docker lint-kubernetes format test test-api test-cruncher smoke-install smoke
 .PHONY: init build up stop configure reload ps logs kube-build kube-up kube-configure kube-reload kube-forward
 
 help:
@@ -14,6 +14,8 @@ help:
 	  '  format                      Check whitespace and conflict markers' \
 	  '  test                        Run the API and Cruncher test suites' \
 	  '  test-api / test-cruncher     Run one test suite' \
+	  '  smoke-install               Install smoke test dependencies and Chromium' \
+	  '  smoke                       Test a fresh running Docker stack (disposable only)' \
 	  'Development' \
 	  '  init                        Generate local configuration' \
 	  '  build / up / stop           Build, start, or stop the Docker stack' \
@@ -80,3 +82,13 @@ logs:
 
 kube-build kube-up kube-configure kube-reload kube-forward:
 	./hoverseer kubernetes $(@:kube-%=%)
+
+# Run only against a fresh, disposable local Compose stack. Creates test data.
+smoke-install:
+	npm ci --prefix api --no-audit --no-fund
+	npm install --prefix api --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+	api/node_modules/.bin/playwright install --with-deps chromium
+
+smoke:
+	mkdir -p smoke-artifacts
+	node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=smoke-artifacts/test-results.xml api/smoke.mjs
